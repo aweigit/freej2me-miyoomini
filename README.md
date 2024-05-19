@@ -29,7 +29,7 @@ java -jar freej2me-sdl.jar /home/game.jar 240 320 100
 
 替换font.ttf，更改字体。
 
-[按键说明](https://github.com/aweigit/freej2me-miyoomini/blob/main/KEYMAP.md)
+[按键说明](https://github.com/aweigit/freej2me-miyoomini/blob/master/KEYMAP.md)
 
-![都市摩天楼](https://github.com/aweigit/freej2me-miyoomini/blob/main/img/ubuntu18.png)
+![都市摩天楼](https://github.com/aweigit/freej2me-miyoomini/blob/master/img/ubuntu18.png)
 
