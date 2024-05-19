@@ -1,0 +1,33 @@
+# 定义编译器和编译选项  
+C_COMPILER = aarch64-none-linux-gnu-gcc
+CPP_COMPILER = aarch64-none-linux-gnu-g++
+#  -DDO_SOMETHING -DM3G_TARGET_ANDROID
+CFLAGS =  -DUSE_GBM  -DM3G_TARGET_GENERIC -DM3G_GL_ES_1_1 -fPIC -O3 -fno-strict-aliasing -march=armv8-a+crc -mtune=cortex-a53 -I./m3g/inc -I./include -I./include/linux 
+  
+# 定义源文件和目标文件  
+SRCS1 = m3g/CSynchronization.cpp m3g/m3g_android_java_api.cpp m3g/src/m3g_android.cpp m3g/src/m3g_android_gl.cpp 
+SRCS2 = m3g/src/m3g_core.c
+OBJS1 = $(SRCS1:%.cpp=%.o) 
+OBJS2 = $(SRCS2:%.c=%.o)
+  
+# 定义生成的目标文件和库名  
+TARGET = libm3g.so
+
+# 编译规则  
+%.o: %.c  
+	$(C_COMPILER) $(CFLAGS)   -c $< -o $@  
+  
+%.o: %.cpp  
+	$(CPP_COMPILER) $(CFLAGS)  -c $< -o $@   
+  
+# 默认目标  
+all: $(TARGET)  
+  
+# 链接生成动态链接库  -lEGL -lGLESv1_CM -Wl,--no-undefined -Wl,--unresolved-symbols=ignore-in-shared-libs
+$(TARGET): $(OBJS1)  $(OBJS2)  
+	$(CPP_COMPILER) -shared -o $(TARGET) $(OBJS1)  $(OBJS2)  -lz -lmali 
+ 
+  
+# 清理目标文件和库  
+clean:  
+	rm -f $(OBJS1) $(OBJS2)

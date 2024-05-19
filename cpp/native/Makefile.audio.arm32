@@ -1,0 +1,27 @@
+# 定义编译器和编译选项  
+C_COMPILER = arm-linux-gnueabihf-gcc
+CPP_COMPILER = arm-linux-gnueabihf-g++
+CFLAGS = -O3 -fno-strict-aliasing -fPIC -marm -mtune=cortex-a7 -march=armv7ve+simd -mfpu=neon-vfpv4 -mfloat-abi=hard -I./audio -I./include -I./include/linux 
+  
+# 定义源文件和目标文件  
+SRCS1 = audio/org_recompile_mobile_Audio.cpp
+OBJS1 = $(SRCS1:%.cpp=%.o) 
+
+  
+# 定义生成的目标文件和库名  
+TARGET = libaudio.so  
+
+%.o: %.cpp 
+	$(CPP_COMPILER) $(CFLAGS)  -c $< -o $@  
+  
+# 默认目标  
+all: $(TARGET)  
+  
+# 链接生成动态链接库  
+$(TARGET): $(OBJS1)
+	$(CPP_COMPILER) -shared -o $(TARGET) $(OBJS1)   -lSDL2 -lSDL2_mixer
+  
+  
+# 清理目标文件和库  
+clean:  
+	rm -f $(OBJS1)

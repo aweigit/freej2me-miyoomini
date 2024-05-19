@@ -1,0 +1,27 @@
+# 定义编译器和编译选项  
+C_COMPILER = aarch64-none-linux-gnu-gcc
+CPP_COMPILER = aarch64-none-linux-gnu-g++
+CFLAGS = -DUSE_GBM -fPIC -O3 -fno-strict-aliasing -march=armv8-a+crc -mtune=cortex-a53 -I./micro3d/inc -I./include -I./include/linux 
+  
+# 定义源文件和目标文件  
+SRCS1 = micro3d/src/utils.cpp
+OBJS1 = $(SRCS1:%.cpp=%.o) 
+
+  
+# 定义生成的目标文件和库名  
+TARGET = libmicro3d.so 
+
+%.o: %.cpp  
+	$(CPP_COMPILER) $(CFLAGS)  -c $< -o $@   
+  
+# 默认目标  
+all: $(TARGET)  
+  
+# 链接生成动态链接库  
+$(TARGET): $(OBJS1)
+	$(CPP_COMPILER) -shared -o $(TARGET) $(OBJS1)   -lmali
+  
+  
+# 清理目标文件和库  
+clean:  
+	rm -f $(OBJS1)
