@@ -178,7 +178,7 @@ public class PlatformPlayer implements Player
 	{
 		try
 		{
-			player.stop();
+			stop();
 			state = Player.CLOSED;
 			notifyListeners(PlayerListener.CLOSED, null);	
 		}
@@ -211,6 +211,8 @@ public class PlatformPlayer implements Player
 		try
 		{
 			player.stop();
+			notifyListeners(PlayerListener.STOPPED, null);	
+			
 		}
 		catch (Exception e) { }
 	}
@@ -240,8 +242,9 @@ public class PlatformPlayer implements Player
 		stop();
 		player.deallocate();
 		
-		notifyListeners(PlayerListener.END_OF_MEDIA, 0);
-		state = Player.UNREALIZED;
+		//notifyListeners(PlayerListener.END_OF_MEDIA, 0);
+		//state = Player.UNREALIZED;
+		state = Player.REALIZED;
 	}
 
 	public String getContentType() { return contentType; }
@@ -375,12 +378,10 @@ public class PlatformPlayer implements Player
 		
 
 		public void start()
-		{
-			
+		{	
 			if(bgmFileName.equals("")) { return; }
 			
 			if(isRunning() && bgmFileName.endsWith(".mid")) { return; }
-			
 			
 			
 			try{
@@ -437,7 +438,8 @@ public class PlatformPlayer implements Player
 				//byte[] zero={0};
 				
 				
-				Audio.start(bgmFileName,loops);
+				//Audio.start(bgmFileName,loops);
+				_start(bgmFileName,loops);
 				
 				
 				// if(loops==1)
@@ -463,6 +465,8 @@ public class PlatformPlayer implements Player
 			//isinit=true;
 			
 			state = Player.STARTED;
+			
+			//System.out.println("开始:"+bgmFileName+" loop:"+loops);
 		}
 
 		public void stop()
@@ -491,10 +495,12 @@ public class PlatformPlayer implements Player
 			{
 				System.out.println(e.getMessage());
 			}
+			
 			isrun=false;
 			
-			
 			state = Player.PREFETCHED;
+			
+			//System.out.println("关闭:"+bgmFileName+" loop:"+loops);
 		}
 		public void deallocate()
 		{
@@ -756,4 +762,6 @@ public class PlatformPlayer implements Player
 	{
 		notifyListeners(PlayerListener.END_OF_MEDIA, 0);
 	}
+	
+	private native void _start(String bgmfile,int loop);
 }
