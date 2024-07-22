@@ -23,6 +23,8 @@ along with FreeJ2ME.  If not, see http://www.gnu.org/licenses/
 
 */
 
+//rg28xx的屏幕方向是竖着的480*640
+
 #include <iostream>
 #include <pthread.h>
 #include <SDL2/SDL.h>
@@ -115,8 +117,8 @@ unsigned char joymouseImage[374] =
 	0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0
 };
 
-#define KEYHOLD_TIMER_FIRST   12
-#define KEYHOLD_TIMER         3
+#define KEYHOLD_TIMER_FIRST   20
+#define KEYHOLD_TIMER         5
 
 #define REPEAT_INTERVAL 200 // 毫秒，按键重复间隔
 #define SDL_JOYSTICK_BUTTON_MAX 30 
@@ -155,6 +157,22 @@ void LimitFrameRate()
     frameDeadline = tc + v + refreshDelay;
 }
 
+uint32_t btn2keycode(uint32_t btn)
+{
+	switch(btn)
+	{
+		case M_UP:
+			return SDLK_UP;
+		case M_DOWN:
+			return SDLK_DOWN;
+		case M_LEFT:
+			return SDLK_LEFT;
+		case M_RIGHT:
+			return SDLK_RIGHT;
+	}
+	return 0;
+}
+
 void tick()
 {
 	if(j_btn>=M_UP && j_btn<=M_RIGHT)
@@ -171,9 +189,10 @@ void tick()
 					m_timer = KEYHOLD_TIMER;
 					// Trigger!
 					SDL_Event event;
-					event.type = SDL_JOYBUTTONDOWN;
-					event.jbutton.button = j_btn;
-					event.jbutton.state = SDL_PRESSED;
+					event.type = SDL_KEYDOWN;
+					event.key.keysym.sym=btn2keycode(j_btn);
+					
+					event.key.state = SDL_PRESSED;
 					
 					SDL_PushEvent(&event);
 					
@@ -839,6 +858,80 @@ void *startCapturing(void *args)
 					if(!use_mouse)
 					{
 						sendKey(key, event.jbutton.state == SDL_PRESSED);
+					}
+				}
+				break;
+				
+				case SDL_KEYDOWN:
+				case SDL_KEYUP:
+				{
+					int key = event.key.keysym.sym;
+					if(key==SDLK_UP)//上
+					{
+						if(rotate==1)
+						{
+							key=SDLK_RIGHT;
+						}
+						else if(rotate==2)
+						{
+							key=SDLK_LEFT;
+						}
+						
+						if(use_mouse && event.key.state == SDL_PRESSED)
+						{
+							updateMouse(key);
+						}
+						
+					}
+					else if(key==SDLK_DOWN)//下
+					{
+						if(rotate==1)
+						{
+							key=SDLK_LEFT;
+						}
+						else if(rotate==2)
+						{
+							key=SDLK_RIGHT;
+						}
+						if(use_mouse && event.key.state == SDL_PRESSED)
+						{
+							updateMouse(key);
+						}
+					}
+					else if(key==SDLK_LEFT) //左
+					{
+						if(rotate==1)
+						{
+							key=SDLK_UP;
+						}
+						else if(rotate==2)
+						{
+							key=SDLK_DOWN;
+						}
+						if(use_mouse && event.key.state == SDL_PRESSED)
+						{
+							updateMouse(key);
+						}
+					}
+					else if(key==SDLK_RIGHT) //右
+					{
+						if(rotate==1)
+						{
+							key=SDLK_DOWN;
+						}
+						else if(rotate==2)
+						{
+							key=SDLK_UP;
+						}
+						if(use_mouse && event.key.state == SDL_PRESSED)
+						{
+							updateMouse(key);
+						}
+					}
+					
+					if(!use_mouse)
+					{
+						sendKey(key, event.key.state == SDL_PRESSED);
 					}
 				}
 				break;

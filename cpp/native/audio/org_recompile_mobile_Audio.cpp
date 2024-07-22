@@ -19,7 +19,7 @@ Mix_Chunk *wave = NULL;
 
 int initAudio=0;
 
-//int level=100;
+int volumLevel=100;
 char name[100];
 
 bool isExit=false;
@@ -183,7 +183,8 @@ void changeBGM(const char* fname,int loop)
 		
 		wave = Mix_LoadWAV(fname);
 		if(wave!=NULL) {
-			//printf("loop %d\n",loop);
+			Mix_VolumeChunk(wave, volumLevel);
+
 			//loops：指示音频是否应重复播放。0表示不重复，-1表示无限循环，其他正数表示重复的次数。
 			loop = loop>0 ? loop-1 : loop;
 			Mix_PlayChannel(0, wave, loop);
@@ -255,8 +256,10 @@ JNIEXPORT void JNICALL Java_org_recompile_mobile_Audio__1setVol
 		initAudio=1;
 	}
 	
+	volumLevel=vol;
+	
 	//printf("[native] MIX_MAX_VOLUME:%d, cur:%d\n",MIX_MAX_VOLUME,vol* MIX_MAX_VOLUME / 100);
-	Mix_VolumeMusic(vol* MIX_MAX_VOLUME / 100);
+	Mix_VolumeMusic(volumLevel);
 	
 	//Mix_SetMusicCMD(SDL_getenv("MUSIC_CMD"));
 }

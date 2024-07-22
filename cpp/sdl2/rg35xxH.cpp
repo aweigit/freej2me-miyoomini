@@ -155,6 +155,22 @@ void LimitFrameRate()
     frameDeadline = tc + v + refreshDelay;
 }
 
+uint32_t btn2keycode(uint32_t btn)
+{
+	switch(btn)
+	{
+		case M_UP:
+			return SDLK_UP;
+		case M_DOWN:
+			return SDLK_DOWN;
+		case M_LEFT:
+			return SDLK_LEFT;
+		case M_RIGHT:
+			return SDLK_RIGHT;
+	}
+	return 0;
+}
+
 void tick()
 {
 	if(j_btn>=M_UP && j_btn<=M_RIGHT)
@@ -171,9 +187,10 @@ void tick()
 					m_timer = KEYHOLD_TIMER;
 					// Trigger!
 					SDL_Event event;
-					event.type = SDL_JOYBUTTONDOWN;
-					event.jbutton.button = j_btn;
-					event.jbutton.state = SDL_PRESSED;
+					event.type = SDL_KEYDOWN;
+					event.key.keysym.sym=btn2keycode(j_btn);
+					
+					event.key.state = SDL_PRESSED;
 					
 					SDL_PushEvent(&event);
 					
@@ -840,6 +857,80 @@ void *startCapturing(void *args)
 					if(!use_mouse)
 					{
 						sendKey(key, event.jbutton.state == SDL_PRESSED);
+					}
+				}
+				break;
+				
+				case SDL_KEYDOWN:
+				case SDL_KEYUP:
+				{
+					int key = event.key.keysym.sym;
+					if(key==SDLK_UP)//上
+					{
+						if(rotate==1)
+						{
+							key=SDLK_RIGHT;
+						}
+						else if(rotate==2)
+						{
+							key=SDLK_LEFT;
+						}
+						
+						if(use_mouse && event.key.state == SDL_PRESSED)
+						{
+							updateMouse(key);
+						}
+						
+					}
+					else if(key==SDLK_DOWN)//下
+					{
+						if(rotate==1)
+						{
+							key=SDLK_LEFT;
+						}
+						else if(rotate==2)
+						{
+							key=SDLK_RIGHT;
+						}
+						if(use_mouse && event.key.state == SDL_PRESSED)
+						{
+							updateMouse(key);
+						}
+					}
+					else if(key==SDLK_LEFT) //左
+					{
+						if(rotate==1)
+						{
+							key=SDLK_UP;
+						}
+						else if(rotate==2)
+						{
+							key=SDLK_DOWN;
+						}
+						if(use_mouse && event.key.state == SDL_PRESSED)
+						{
+							updateMouse(key);
+						}
+					}
+					else if(key==SDLK_RIGHT) //右
+					{
+						if(rotate==1)
+						{
+							key=SDLK_DOWN;
+						}
+						else if(rotate==2)
+						{
+							key=SDLK_UP;
+						}
+						if(use_mouse && event.key.state == SDL_PRESSED)
+						{
+							updateMouse(key);
+						}
+					}
+					
+					if(!use_mouse)
+					{
+						sendKey(key, event.key.state == SDL_PRESSED);
 					}
 				}
 				break;
