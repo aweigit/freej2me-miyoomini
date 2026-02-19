@@ -7,7 +7,7 @@
 
 [JL-Mod](https://github.com/woesss/JL-Mod)
 
-在miyoomini 、gkdminiplus、rg28xx、ubuntu18、trimui brick上进行了测试
+在miyoomini 、gkdminiplus、rg28xx、ubuntu18、trimui brick、 miyoo flip上进行了测试
 
 编译：
 

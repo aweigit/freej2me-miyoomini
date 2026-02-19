@@ -6,7 +6,7 @@
 
 [JL-Mod](https://github.com/woesss/JL-Mod)
 
-Tested on miyoomini, gkdminiplus, rg28xx, ubuntu18, trimui brick
+Tested on miyoomini, gkdminiplus, rg28xx, ubuntu18, trimui brick, miyoo flip
  
 #### compile:
  
@@ -25,3 +25,5 @@ java -jar freej2me-sdl.jar /home/game.jar 240 320 100
 ```
 
 240 320 refers to the game resolution, and 100 refers to the volume (0-100)
+
+[Button Instructions](https://github.com/aweigit/freej2me-miyoomini/blob/master/KEYMAP_ENG.md)
