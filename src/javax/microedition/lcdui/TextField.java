@@ -88,6 +88,41 @@ public class TextField extends Item
 		text = out.toString();
 	}
 
+	public void append(char c)
+	{
+		if(text.length()>=max)
+		{
+			return;
+		}
+		
+		StringBuilder out = new StringBuilder(text);
+		out.append(c);
+		
+		text = out.toString();
+	}
+	
+	public void replace(char c)//替换最后一个字符
+	{
+		StringBuilder out = new StringBuilder(text);
+		if (out.length() > 0) { // 检查长度避免空指针异常
+			out.setCharAt(out.length() - 1, c); 
+		}
+		else
+		{
+			out.append(c);
+		}
+		text = out.toString();
+	}
+	
+	public void delete()
+	{
+		StringBuilder out = new StringBuilder(text);
+		if (out.length() > 0) { // 检查长度避免空指针异常
+			out.delete(out.length() - 1, out.length()); // 删除最后一个字符
+		}
+		text = out.toString();
+	}
+
 	public void setChars(char[] data, int offset, int length)
 	{
 		StringBuilder out = new StringBuilder();

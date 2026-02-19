@@ -26,6 +26,7 @@ import javax.microedition.lcdui.Canvas;
 import javax.microedition.lcdui.game.GameCanvas;
 import javax.microedition.lcdui.Image;
 import javax.microedition.m3g.Graphics3D;
+import javax.microedition.lcdui.TextField;
 
 import java.awt.image.BufferedImage;
 
@@ -56,6 +57,9 @@ public class MobilePlatform
 	private int[] keyStateArr=new int[6];
 	private int s=0;
 	private int e=0;
+
+	private static int chr=-1;
+	private static int numchr=-1;
 	
 	public boolean suppressKeyEvents=false;
 
@@ -123,6 +127,40 @@ public class MobilePlatform
 
 	public void keyPressed(int keycode)
 	{
+		TextField tf=Mobile.getTextField();
+		if(tf!=null)
+		{
+			if(keycode==Mobile.KEY_NUM6 || keycode==Mobile.NOKIA_RIGHT)//替换a-z字符
+			{
+				chr=(chr+1)%26;
+				tf.replace((char)(chr+0x61));
+			}
+			else if(keycode==Mobile.KEY_NUM4 || keycode==Mobile.NOKIA_LEFT)//替换a-z字符
+			{
+				chr=(chr+25)%26;
+				tf.replace((char)(chr+0x61));
+			}
+			if(keycode==Mobile.KEY_NUM3)//替换0-9字符
+			{
+				numchr=(numchr+1)%10;
+				tf.replace((char)(numchr+0x30));
+			}
+			else if(keycode==Mobile.KEY_NUM1)//替换0-9字符
+			{
+				numchr=(numchr+9)%10;
+				tf.replace((char)(numchr+0x30));
+			}
+			else if(keycode==Mobile.KEY_STAR)//按*删除
+			{
+				tf.delete();
+			}
+			else if(keycode==Mobile.KEY_POUND)//按#添加新字符
+			{
+				tf.append((char)(chr+0x61));
+			}
+			
+		}
+
 		updateKeyState(keycode, 1);
 		if(!suppressKeyEvents)
 			Mobile.getDisplay().getCurrent().keyPressed(keycode);

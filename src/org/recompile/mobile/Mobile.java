@@ -20,6 +20,7 @@ import java.io.InputStream;
 
 import javax.microedition.lcdui.Display;
 import javax.microedition.lcdui.Canvas;
+import javax.microedition.lcdui.TextField;
 import javax.microedition.m3g.Graphics3D;
 
 /*
@@ -35,6 +36,8 @@ public class Mobile
 	private static MobilePlatform platform;
 
 	private static Display display;
+
+	private static TextField tf=null;
 
 	//private static Graphics3D graphics3d;
 
@@ -120,6 +123,16 @@ public class Mobile
 	public static void setDisplay(Display d)
 	{
 		display = d;
+	}
+
+	public static void setTextField(TextField t)
+	{
+		tf = t;
+	}
+	
+	public static TextField getTextField()
+	{
+		return tf;
 	}
 
 	/* public static Graphics3D getGraphics3D()

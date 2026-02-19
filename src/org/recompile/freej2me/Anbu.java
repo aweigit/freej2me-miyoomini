@@ -413,8 +413,15 @@ public class Anbu
 				proc=processBuilder.start();
 
 				//标准输出流，从接口获取用户的按键输入
-				keys = proc.getInputStream(); //  miyoo mini/x64-linux
-				//keys = proc.getErrorStream(); //gkdminiplus
+				//keys = proc.getInputStream(); //  miyoo mini/x64-linux
+				keys = proc.getErrorStream(); //gkdminiplus
+				//先把错误流里的数据清空
+				InputStreamReader eisr = new InputStreamReader(keys);
+				BufferedReader procErrorOutput = new BufferedReader(eisr);
+				String output;
+				while (procErrorOutput.ready() && (output = procErrorOutput.readLine()) != null) {
+					//System.out.println(output);
+				}
 				
 				//输入流，把图像传给接口
 				frame = proc.getOutputStream();

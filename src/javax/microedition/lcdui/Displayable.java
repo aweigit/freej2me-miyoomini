@@ -148,20 +148,37 @@ public abstract class Displayable
 			{	
 				if(currentItem == i)
 				{
-					gc.fillRect(0,y,width,15);
+					gc.fillRect(0,y,width,20);//选中为黑底白字
 					gc.setColor(0xFFFFFF);
+					
+					if(items.get(i) instanceof TextField)
+					{
+						Mobile.setTextField(((TextField)items.get(i)));
+					}
+					else
+					{
+						Mobile.setTextField(null); 
+					}
 				}
-				gc.drawString(items.get(i).getLabel(), width/2, y, Graphics.HCENTER);
+				gc.drawString(items.get(i).getLabel()+":", 10, y, Graphics.LEFT);
+				
+				gc.setColor(0x000000);
+				if(items.get(i) instanceof TextField)
+				{
+					y+=20;//防止label和text位置重叠
+					gc.drawString(((TextField)items.get(i)).getString(), width/2, y, Graphics.HCENTER);
+				}
+				
 				if(items.get(i) instanceof StringItem)
 				{
+					//这个地方应该会导致label和string位置重叠,由于没遇到满足情况的jar，具体表现不清楚
 					gc.drawString(((StringItem)items.get(i)).getText(), width/2, y, Graphics.HCENTER);
 				}
-				gc.setColor(0x000000);
 				if(items.get(i) instanceof ImageItem)
 				{
 					gc.drawImage(((ImageItem)items.get(i)).getImage(), width/2, y, Graphics.HCENTER);
 				}
-				y+=15;
+				y+=20;
 			}
 		}
 		// Draw Commands
