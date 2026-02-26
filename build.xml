@@ -17,7 +17,7 @@
         </fileset>
     </path>
 
-	<echo message="FreeJ2ME - | SDL | Libretro" />
+	<echo message="FreeJ2ME - | SDL" />
 	<mkdir dir="build/classes"/>
 	<javac
 		srcdir="src"
@@ -43,7 +43,6 @@
 	<jar
 		destfile="build/freej2me-sdl.jar"
 		basedir="build/classes">
-		<fileset dir="resources" />
 		<metainf dir="META-INF" />
 		<manifest>
 			<!-- Libretro Version -->
