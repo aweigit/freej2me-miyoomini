@@ -85,12 +85,11 @@ int joy2emu(int joy)
 			return TRIGGERRIGHT;
 		case SDL_CONTROLLER_BUTTON_B:
 			return BUTTON_A;
-		case SDL_CONTROLLER_BUTTON_GUIDE:
-			return SDLK_BACKSPACE;
 	}
 	
 	return 0;
 }
+
 
 pthread_t t_capturing;
 
@@ -106,12 +105,12 @@ bool capturing = true;
 int rotate=0;
 int overlay_scale=2;
 
-SDL_Renderer *mRenderer;
-SDL_Texture *mTexture;
-SDL_Texture *romTexture;
-SDL_Texture *mBackground;
-SDL_Texture *mOverlay;
-SDL_Window *mWindow;
+SDL_Renderer *mRenderer=NULL;
+SDL_Texture *mTexture=NULL;
+SDL_Texture *romTexture=NULL;
+SDL_Texture *mBackground=NULL;
+SDL_Texture *mOverlay=NULL;
+SDL_Window *mWindow=NULL;
 
 SDL_Joystick *g_joystick=NULL;
 
@@ -119,6 +118,7 @@ SDL_Joystick *g_joystick=NULL;
 short joymouseX = 0;
 short joymouseY = 0;
 bool use_mouse = 0;
+bool use_numpad = 0;
 // mouse cursor image
 unsigned char joymouseImage[374] =
 {
@@ -276,6 +276,18 @@ void updateMouse(int direct)
 
 void sendKey(int key, bool pressed)
 {
+	if(use_numpad)//强制把ok键转化为数字5
+	{
+		switch (key)
+		{
+			case SDLK_RETURN:
+				key = SDLK_5;
+				break;
+			default:
+				break;
+		}
+	}
+	
 	unsigned char bytes [5];
 	bytes[0] = (char) (0x00 | pressed );
 
@@ -305,6 +317,31 @@ void sendKey_Mouse(bool pressed)
 
 	fflush(stderr);
 }
+
+void sendKey_Numpad(int key , bool pressed)
+{
+	int newkey=0;
+	switch (key)
+	{
+		case SDL_CONTROLLER_BUTTON_DPAD_UP:
+			newkey = SDLK_2;
+			break;
+		case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+			newkey = SDLK_8;
+			break;
+		case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+			newkey = SDLK_4;
+			break;
+		case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+			newkey = SDLK_6;
+			break;
+		default:
+			return;
+	}
+
+	sendKey(newkey, pressed);
+}
+
 
 void sendKey_Direct(int key , bool pressed)
 {
@@ -755,9 +792,7 @@ void startStreaming()
 void *startCapturing(void *args)
 {
 	int mod=0;
-	int ignore=0;
 	SDL_Event e;
-	//int isFirst=1;
 	while (capturing)
 	{
 		//if (SDL_WaitEvent(&e))
@@ -891,13 +926,13 @@ void *startCapturing(void *args)
 								left_trigger_active = true;
 								printf("Left Trigger PRESSED (value=%d)\n", value);
 								// 在这里执行“按下”逻辑
-								sendKey(SDL_AXIS_TRIGGERLEFT,true);
+								sendKey(joy2emu(SDL_AXIS_TRIGGERLEFT),true);
 							}
 							else if (left_trigger_active && value < TRIGGER_RELEASE_THRESHOLD) {
 								left_trigger_active = false;
 								printf("Left Trigger RELEASED (value=%d)\n", value);
 								// 在这里执行“释放”逻辑
-								sendKey(SDL_AXIS_TRIGGERLEFT,false);
+								sendKey(joy2emu(SDL_AXIS_TRIGGERLEFT),false);
 							}
 						
 							axis_name = "Left Trigger";
@@ -908,12 +943,12 @@ void *startCapturing(void *args)
 							if (!right_trigger_active && value > TRIGGER_PRESS_THRESHOLD) {
 								right_trigger_active = true;
 								printf("Right Trigger PRESSED (value=%d)\n", value);
-								sendKey(SDL_AXIS_TRIGGERRIGHT,true);
+								sendKey(joy2emu(SDL_AXIS_TRIGGERRIGHT),true);
 							}
 							else if (right_trigger_active && value < TRIGGER_RELEASE_THRESHOLD) {
 								right_trigger_active = false;
 								printf("Right Trigger RELEASED (value=%d)\n", value);
-								sendKey(SDL_AXIS_TRIGGERRIGHT,false);
+								sendKey(joy2emu(SDL_AXIS_TRIGGERRIGHT),false);
 							}
 						
 							axis_name = "Right Trigger";
@@ -965,27 +1000,32 @@ void *startCapturing(void *args)
 						case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER://R1
 							button_name="SDL_CONTROLLER_BUTTON_RIGHTSHOULDER";
 							break;
-						case SDL_CONTROLLER_BUTTON_LEFTSTICK://左摇杆按下模拟鼠标点击
+						case SDL_CONTROLLER_BUTTON_LEFTSTICK://左摇杆按下把方向键切换为2,4,6,8
 							button_name="SDL_CONTROLLER_BUTTON_LEFTSTICK";
-							sendKey_Mouse(e.cbutton.state == SDL_PRESSED);
+							use_numpad=((e.cbutton.state == SDL_PRESSED) ? (1-use_numpad) : use_numpad) ;
 							break;
-						case SDL_CONTROLLER_BUTTON_RIGHTSTICK://右摇杆按下退出
+						case SDL_CONTROLLER_BUTTON_RIGHTSTICK://右摇杆作为ok键(SDLK_o)
 							button_name="SDL_CONTROLLER_BUTTON_RIGHTSTICK";
-							capturing = false;
-							sendKey(-1, e.cbutton.state == SDL_PRESSED);
+							sendKey(SDLK_o, e.cbutton.state == SDL_PRESSED);
 							break;
 						case SDL_CONTROLLER_BUTTON_DPAD_UP:
 						case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
 						case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
 						case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-							sendKey_Direct(e.cbutton.button, e.cbutton.state == SDL_PRESSED);
+							if(use_numpad)
+							{
+								sendKey_Numpad(e.cbutton.button, e.cbutton.state == SDL_PRESSED);
+							}
+							else{
+								sendKey_Direct(e.cbutton.button, e.cbutton.state == SDL_PRESSED);
+							}
 							break;
-						case SDL_CONTROLLER_BUTTON_GUIDE:
+						case SDL_CONTROLLER_BUTTON_GUIDE: //menu键退出
 							button_name="SDL_CONTROLLER_BUTTON_GUIDE";
 							capturing = false;
 							sendKey(-1, e.cbutton.state == SDL_PRESSED);
 							break;
-						default:
+						default://未识别的键也退出
 							button_name = "Unknown button_name";
 							capturing = false;
 							sendKey(-1, e.cbutton.state == SDL_PRESSED);

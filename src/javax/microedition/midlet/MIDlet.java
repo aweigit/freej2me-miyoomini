@@ -24,7 +24,7 @@ import javax.microedition.lcdui.game.*;
 import javax.microedition.pki.*;
 import javax.microedition.rms.*;
 
-import org.recompile.mobile.Audio;
+import org.recompile.mobile.SdlMixerManager;
 
 public abstract class MIDlet
 {
@@ -60,7 +60,7 @@ public abstract class MIDlet
 
 	public final void notifyDestroyed()
 	{ 
-		Audio.destroy();
+		SdlMixerManager.shutdown();
 
 		System.out.println("MIDlet sent Destroyed Notification");
 		System.exit(0);

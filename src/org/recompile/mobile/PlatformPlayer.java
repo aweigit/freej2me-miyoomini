@@ -28,17 +28,7 @@ import java.io.FilenameFilter;
 import java.security.MessageDigest;
 
 import java.util.Vector;
-/* import javax.sound.midi.MidiSystem;
-import javax.sound.midi.Sequencer;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
-import javax.sound.midi.Soundbank;
-import javax.sound.midi.Sequence;
-import javax.sound.midi.Synthesizer;
-import javax.sound.midi.Transmitter;
-import javax.sound.midi.Receiver;
-import javax.sound.midi.MidiDevice; */
+
 
 import javax.microedition.media.Player;
 import javax.microedition.media.PlayerListener;
@@ -46,13 +36,7 @@ import javax.microedition.media.PlayerListener;
 import javax.microedition.media.Control;
 import javax.microedition.media.Controllable;
 
-import org.recompile.mobile.Audio;
-
-import java.util.Timer;
-import java.util.TimerTask;
-
-/* import javax.sound.midi.MidiSystem;
-import javax.sound.midi.Sequencer; */
+import org.recompile.mobile.SdlMixerManager;
 
 
 
@@ -93,9 +77,6 @@ public class PlatformPlayer implements Player
 
 	private Control[] controls;
 	
-	//public static boolean customMidi = true;
-
-	//public static File soundfontDir = new File("./customMIDI/");
 
 	public PlatformPlayer(InputStream stream, String type)
 	{
@@ -113,28 +94,20 @@ public class PlatformPlayer implements Player
 			if(type.equalsIgnoreCase("audio/mid") || type.equalsIgnoreCase("audio/midi") || type.equalsIgnoreCase("sp-midi") 
 				|| type.equalsIgnoreCase("audio/spmidi"))
 			{
-				player = new midiPlayer(stream,".mid");
+				player = new sdlPlayer(stream,".mid");
 			}
 			else if(type.equalsIgnoreCase("audio/mpeg") || type.equalsIgnoreCase("audio/x-wav") || type.equalsIgnoreCase("audio/wav"))
 			{
-				player = new midiPlayer(stream,".wav");
+				player = new sdlWavPlayer(stream, ".wav");
 			}
 			else
 			{
-				if(type.equalsIgnoreCase("audio/x-wav") || type.equalsIgnoreCase("audio/wav"))
-				{
-					player = new wavPlayer(stream);
-				}
-				else /* TODO: Implement a player for amr and mpeg audio types */
-				{
-					System.out.println("No Player For: "+contentType);
-					player = new audioplayer();
-				}
+				player = new sdlPlayer(stream,".audio");
 			}
 		}
-		controls[0] = new volumeControl();
+		controls[0] = new volumeControl(player);
 		controls[1] = new tempoControl();
-		controls[2] = new midiControl();
+		controls[2] = new midiControl(player);
 
 		System.out.println("media type: "+type);
 	}
@@ -173,12 +146,11 @@ public class PlatformPlayer implements Player
 
 	}
 
-
 	public void close()
 	{
 		try
 		{
-			stop();
+			player.stop();
 			state = Player.CLOSED;
 			notifyListeners(PlayerListener.CLOSED, null);	
 		}
@@ -188,16 +160,11 @@ public class PlatformPlayer implements Player
 
 	public int getState()
 	{
-		/* if(player.isRunning()==false)
-		{
-			state = Player.PREFETCHED;
-		} */
 		return state;
 	}
 
 	public void start()
 	{
-		//System.out.println("Play "+contentType);
 		try
 		{
 			player.start();
@@ -207,11 +174,9 @@ public class PlatformPlayer implements Player
 
 	public void stop()
 	{
-		//System.out.println("Stop "+contentType);
 		try
 		{
 			player.stop();
-			notifyListeners(PlayerListener.STOPPED, null);	
 			
 		}
 		catch (Exception e) { }
@@ -219,13 +184,11 @@ public class PlatformPlayer implements Player
 
 	public void addPlayerListener(PlayerListener playerListener)
 	{
-		//System.out.println("Add Player Listener");
 		listeners.add(playerListener);
 	}
 
 	public void removePlayerListener(PlayerListener playerListener)
 	{
-		//System.out.println("Remove Player Listener");
 		listeners.remove(playerListener);
 	}
 
@@ -242,9 +205,7 @@ public class PlatformPlayer implements Player
 		stop();
 		player.deallocate();
 		
-		//notifyListeners(PlayerListener.END_OF_MEDIA, 0);
-		//state = Player.UNREALIZED;
-		state = Player.REALIZED;
+		state = Player.UNREALIZED;
 	}
 
 	public String getContentType() { return contentType; }
@@ -281,7 +242,7 @@ public class PlatformPlayer implements Player
 
 	// Players //
 
-	private class audioplayer
+	public static class audioplayer
 	{
 		public void start() {  }
 		public void stop() {  }
@@ -290,28 +251,22 @@ public class PlatformPlayer implements Player
 		public long getMediaTime() { return 0; }
 		public boolean isRunning() { return false; }
 		public void deallocate() {  }
+		public void setVolume(int vol) { };
 	}
 	
-	
-
-	
-	
-	private class midiPlayer extends audioplayer
+	public class sdlPlayer extends audioplayer
 	{
-		//private Sequencer midi;
-
-		private int loops = 1;
-
-		//private long tick = 0L;
-		//private boolean isinit=false;
-		
-		private boolean isrun=false;
+		private int loops = 0;
 		
 		private String bgmFileName="";
 		
-		//private int ts=0;
-
-		public midiPlayer(InputStream stream, String type)
+		private SdlMixerManager manager;
+		
+		private long currentMusicHandle = 0;
+		
+		private boolean isOpen = false;
+		
+		public sdlPlayer(InputStream stream, String type)
 		{
 			try
 			{
@@ -324,7 +279,7 @@ public class PlatformPlayer implements Player
 				{
 					System.out.println(e.getMessage());
 				}
-				//ByteArrayInputStream bis=(ByteArrayInputStream)stream;
+
 				byte[] buffer = new byte[1024];
 				int len;
 				String filename="";
@@ -335,7 +290,6 @@ public class PlatformPlayer implements Player
 				}
 				
 				bgmFileName=filename+type;				
-				//System.out.println(bgmFileName);
 				File file = new File(bgmFileName);
 				
 				if(!file.exists())
@@ -356,18 +310,13 @@ public class PlatformPlayer implements Player
 					}
 				}
 				
+				SdlMixerManager.init();
 				
-				// stream.reset();
-				// Sequencer midi = MidiSystem.getSequencer(false);
-				// midi.open();
-				// midi.setSequence(stream);
-				// long mlength = midi.getMicrosecondLength();
-				
-				// ts=(int)Math.ceil((double)mlength/1000000);
-				
-				// System.out.println("微秒:"+mlength + " 秒:"+ts+" bgm:"+bgmFileName); 
-				// midi.close();
-				
+				manager = new SdlMixerManager();
+				currentMusicHandle = manager.sdlMixerLoadMidi(bgmFileName, this);
+				if (currentMusicHandle == -1) {
+					System.err.println("❌ 加载MIDI文件失败: " + bgmFileName);
+				}
 				
 			}
 			catch (Exception e) {
@@ -375,333 +324,217 @@ public class PlatformPlayer implements Player
 			}
 		}
 		
-		
-
 		public void start()
-		{	
-			if(bgmFileName.equals("")) { return; }
+		{
+			if(currentMusicHandle==0)
+			{
+				currentMusicHandle =  manager.sdlMixerLoadMidi(bgmFileName, this);
+			}
 			
-			if(isRunning() && bgmFileName.endsWith(".mid")) { return; }
+			if (currentMusicHandle == -1) {
+				System.err.println("❌ 加载MIDI文件失败: " + bgmFileName);
+				return;
+			}
 			
+			manager.sdlMixerResumeMusic();
 			
-			try{
-				
-				//System.out.println(bgmFileName+"开始设置播放");
-				
-				byte[] frame = new byte[100];
-				frame[0]='$';//36
-				frame[1]='C';//初始化
-					
-				frame[2]=(byte)(loops);
-				frame[3]=(byte)(loops >> 8);
-				frame[4]=(byte)(loops >> 16);
-				frame[5]=(byte)(loops >> 24);
-				
-				byte[] fname=bgmFileName.getBytes("UTF-8");
-				
-				//byte[] name=new byte[fname.length+1];
-				//name[fname.length]=0;
-				
-				for(int i = 0; i < fname.length; i++)
-				{
-					frame[i+6] = fname[i];
-					
-					//name[i]=fname[i];
+			if(!isOpen || !manager.sdlMixerIsPlaying())
+			{
+				int result = manager.sdlMixerPlayMusic(currentMusicHandle, loops);
+				if (result == 0) {
+					isOpen = true;
+					System.out.println("🎵 开始播放: " + bgmFileName);
+				} else {
+					System.err.println("❌ 播放失败");
+					return;
 				}
-				
-				// if(isinit)//初始化过
-				// {
-					// frame[1]='R';//继续
-					
-				// }
-				// else
-				// {
-					// frame[1]='C';//初始化
-					
-					// frame[2]=(byte)(loops);
-					// frame[3]=(byte)(loops >> 8);
-					// frame[4]=(byte)(loops >> 16);
-					// frame[5]=(byte)(loops >> 24);
-					
-					// byte[] fname=bgmFileName.getBytes("UTF-8");
-					// for(int i = 0; i < fname.length; i++)
-					// {
-						// frame[i+6] = fname[i];
-					// }
-					
-					
-				// }
-				
-				
-				//Anbu.au.frame.write(frame);
-				//Anbu.au.frame.flush();
-				//byte[] zero={0};
-				
-				
-				//Audio.start(bgmFileName,loops);
-				_start(bgmFileName,loops);
-				
-				
-				// if(loops==1)
-				// {
-					// Timer timer = new Timer();
-					// TimerTask task = new TimerTask() {
-						// @Override
-						// public void run() {
-							// System.out.println("定时任务执行一次");
-							
-							// notifyListeners(PlayerListener.END_OF_MEDIA, 0);	
-						// }
-					// };
-					// timer.schedule(task, ts); // 5秒后执行任务
-				// }
-				
-				
 			}
-			catch(Exception e){
-				System.out.println(e.getMessage());
-			}
-			isrun=true;
-			//isinit=true;
 			
 			state = Player.STARTED;
-			
-			//System.out.println("开始:"+bgmFileName+" loop:"+loops);
+			notifyListeners(PlayerListener.STARTED, 0);
 		}
-
+		
 		public void stop()
-		{	
-			if(!isRunning())return;
-			try{
-				byte[] frame = new byte[100];
-				frame[0]='$';//36
-				frame[1]='S';//83
-				//Anbu.au.frame.write(frame);
-				//Anbu.au.frame.flush();
-				
-				if(bgmFileName.endsWith(".mid"))
-				{
-					Audio.stop(1);
-				}
-				else if(bgmFileName.endsWith(".wav"))
-				{
-					Audio.stop(2);
-				}
-				
-				
-				//System.out.println(bgmFileName+"停止");
-			}
-			catch(Exception e)
-			{
-				System.out.println(e.getMessage());
-			}
-			
-			isrun=false;
-			
+		{
+			manager.sdlMixerPauseMusic();
 			state = Player.PREFETCHED;
-			
-			//System.out.println("关闭:"+bgmFileName+" loop:"+loops);
+			notifyListeners(PlayerListener.STOPPED, 0);
 		}
+		
 		public void deallocate()
 		{
-			// if(!isinit)
-			// {
-				// return;
-			// }
+			if (currentMusicHandle != 0) {
+				manager.sdlMixerStopMusic();//先halt
+				manager.sdlMixerFreeMusic(currentMusicHandle);//再释放
+				currentMusicHandle = 0;
+			}
 			
-			// try{
-				// byte[] frame = new byte[100];
-				// frame[0]='$';//36
-				// frame[1]='S';//83
-				// Anbu.au.frame.write(frame);
-				// Anbu.au.frame.flush();
-				//System.out.println(bgmFileName+"停止");
-			// }
-			// catch(Exception e)
-			// {
-				// System.out.println(e.getMessage());
-			// }
-			// isinit=false;
-			// isrun=false;
+			isOpen = false;
 		}
-
-		public void setLoopCount(int count)
-		{
-			
-			//System.out.println("设置播放次数");
-			//System.out.println(bgmFileName+":"+count);
-			loops = count;
-			
-		}
-		public long setMediaTime(long now)
-		{
-			
-			return now;
-		}
-		public long getMediaTime()
-		{
-			
-			return 0;
-		}
-		public boolean isRunning()
-		{
-			return isrun;
-			
-		}
-	}
-	
-
-	private class wavPlayer extends audioplayer
-	{
-
-		private int loops = 0;
-
-		//private long time = 0L;
 		
-		private boolean isrun=false;
-
-		public wavPlayer(InputStream stream)
-		{
-			/* try
-			{
-				wavStream = AudioSystem.getAudioInputStream(stream);
-				wavClip = AudioSystem.getClip();
-				wavClip.open(wavStream);
-				state = Player.PREFETCHED;
-			}
-			catch (Exception e) 
-			{ 
-				System.out.println("Couldn't load wav file: " + e.getMessage());
-				wavClip.close();
-			} */
-			
-			state = Player.PREFETCHED;
-		}
-
-		public void start()
-		{
-			if(isRunning()) { return; }
-			
-			/* if(wavClip.getFramePosition() >= wavClip.getFrameLength())
-			{
-				wavClip.setFramePosition(0);
-			}
-			time = wavClip.getMicrosecondPosition();
-			wavClip.start();
-			state = Player.STARTED;
-			notifyListeners(PlayerListener.STARTED, time); */
-			
-			state = Player.STARTED;
-			isrun=true;
-		}
-
-		public void stop()
-		{
-			/* wavClip.stop();
-			time = wavClip.getMicrosecondPosition();
-			state = Player.PREFETCHED;
-			notifyListeners(PlayerListener.STOPPED, time); */
-			
-			state = Player.PREFETCHED;
-			isrun=false;
-		}
-
 		public void setLoopCount(int count)
 		{
 			loops = count;
-			//wavClip.loop(count);
+			System.out.println("midi loop: " + loops);
 		}
-
-		public long setMediaTime(long now)
+		
+		public void setVolume(int vol)
 		{
-			//wavClip.setMicrosecondPosition(now);
-			return now;
+			manager.sdlMixerSetVolume(vol);
 		}
-		public long getMediaTime()
+		
+		public void onPlaybackComplete()
 		{
-			return 0;
-		}
-
-		public boolean isRunning()
-		{
-			return isrun;
+			notifyListeners(PlayerListener.END_OF_MEDIA, 0);
 		}
 	}
 	
-	/* private class wavPlayer extends audioplayer
+	
+	public class sdlWavPlayer extends audioplayer
 	{
-
-		private AudioInputStream wavStream;
-		private Clip wavClip;
-
 		private int loops = 0;
-
-		private long time = 0L;
-
-		public wavPlayer(InputStream stream)
+		
+		private String bgmFileName="";
+		
+		private SdlMixerManager manager;
+		
+		private long currentMusicHandle = 0;
+		
+		private boolean isOpen = false;
+		
+		public sdlWavPlayer(InputStream stream, String type)
 		{
 			try
 			{
-				wavStream = AudioSystem.getAudioInputStream(stream);
-				wavClip = AudioSystem.getClip();
-				wavClip.open(wavStream);
-				state = Player.PREFETCHED;
+				String rmsPath = "./rms/"+Mobile.getPlatform().loader.suitename;
+				try
+				{
+					Files.createDirectories(Paths.get(rmsPath));
+				}
+				catch (Exception e)
+				{
+					System.out.println(e.getMessage());
+				}
+				byte[] buffer = new byte[1024];
+				int len;
+				String filename="";
+				if ((len = stream.read(buffer)) != -1)
+				{
+					filename=encodeMD5String(buffer);
+					filename="./rms/"+Mobile.getPlatform().loader.suitename+"/"+filename;
+				}
+				
+				bgmFileName=filename+type;				
+				File file = new File(bgmFileName);
+				
+				if(!file.exists())
+				{
+					try
+					{
+						file.createNewFile();
+						FileOutputStream fos = new FileOutputStream(file);
+						fos.write(buffer, 0, len);
+						while ((len = stream.read(buffer)) != -1) {
+							fos.write(buffer, 0, len);
+						}
+						fos.close();
+					}
+					catch (Exception e)
+					{
+						System.out.println(e.getMessage());
+					}
+				}
+			
+				SdlMixerManager.init();
+				
+				manager = new SdlMixerManager();
+				currentMusicHandle = manager.sdlMixerLoadWav(bgmFileName);
+				if (currentMusicHandle == -1) {
+					System.err.println("❌ 加载WAV文件失败: " + bgmFileName);
+				}
+				
 			}
-			catch (Exception e) 
-			{ 
-				System.out.println("Couldn't load wav file: " + e.getMessage());
-				wavClip.close();
+			catch (Exception e) {
+				System.out.println(e.getMessage());
 			}
 		}
-
+		
 		public void start()
 		{
-			if(isRunning()) { return; }
-			
-			if(wavClip.getFramePosition() >= wavClip.getFrameLength())
+			if(currentMusicHandle==0)
 			{
-				wavClip.setFramePosition(0);
+				currentMusicHandle =  manager.sdlMixerLoadWav(bgmFileName);
 			}
-			time = wavClip.getMicrosecondPosition();
-			wavClip.start();
+			
+			if (currentMusicHandle == -1) {
+				System.err.println("❌ 加载WAV文件失败: " + bgmFileName);
+				return;
+			}
+			
+			manager.sdlMixerResumeWav();//由于wav只播放一次，所以暂停后已经结束播放了，再恢复也没有声音,先尝试恢复一下
+			
+			if(!isOpen || !manager.sdlMixerIsPlayingWav())
+			{
+				int result = manager.sdlMixerPlayWav(currentMusicHandle, loops);
+				if (result == 0) {
+					isOpen = true;
+					System.out.println("🎵 开始播放: " + bgmFileName);
+				} else {
+					System.err.println("❌ 播放失败");
+					return;
+				}
+			}
+			
+			
 			state = Player.STARTED;
-			notifyListeners(PlayerListener.STARTED, time);
+			notifyListeners(PlayerListener.STARTED, 0);
 		}
-
+		
 		public void stop()
 		{
-			wavClip.stop();
-			time = wavClip.getMicrosecondPosition();
+			manager.sdlMixerPauseWav();
 			state = Player.PREFETCHED;
-			notifyListeners(PlayerListener.STOPPED, time);
+			notifyListeners(PlayerListener.STOPPED, 0);
 		}
-
+		
+		public void deallocate()
+		{
+			if (currentMusicHandle != 0) {
+				manager.sdlMixerStopWav();//先halt
+				manager.sdlMixerFreeWav(currentMusicHandle);//再释放
+				currentMusicHandle = 0;
+			}
+			
+			isOpen = false;
+		}
+		
 		public void setLoopCount(int count)
 		{
+			if(count>0)
+			{
+				count=count-1;
+			}
 			loops = count;
-			wavClip.loop(count);
+			System.out.println("wav loop: " + loops);
 		}
-
-		public long setMediaTime(long now)
+		
+		public void setVolume(int vol)
 		{
-			wavClip.setMicrosecondPosition(now);
-			return now;
+			manager.sdlMixerSetVolumeWav(vol);
 		}
-		public long getMediaTime()
-		{
-			return wavClip.getMicrosecondPosition();
-		}
-
-		public boolean isRunning()
-		{
-			return wavClip.isRunning();
-		}
-	} */
+		
+	}
 
 	// Controls //
 
 	private class midiControl implements javax.microedition.media.control.MIDIControl
 	{
+		private audioplayer manager;
+		public midiControl(audioplayer m)
+		{
+			manager = m;
+		}
+		
 		public int[] getBankList(boolean custom) { return new int[]{}; }
 
 		public int getChannelVolume(int channel) { return 0; }
@@ -718,7 +551,7 @@ public class PlatformPlayer implements Player
 
 		public int longMidiEvent(byte[] data, int offset, int length) { return 0; }
 
-		public void setChannelVolume(int channel, int volume) {  }
+		public void setChannelVolume(int channel, int volume) { manager.setVolume(volume); }
 
 		public void setProgram(int channel, int bank, int program) {  }
 
@@ -727,6 +560,11 @@ public class PlatformPlayer implements Player
 
 	private class volumeControl implements javax.microedition.media.control.VolumeControl
 	{
+		private audioplayer manager;
+		public volumeControl(audioplayer m)
+		{
+			manager = m;
+		}
 		private int level = 100;
 		private boolean muted = false;
 
@@ -734,12 +572,12 @@ public class PlatformPlayer implements Player
 
 		public boolean isMuted() { return muted; }
 
-		public int setLevel(int value) { level = value; return level; }
+		public int setLevel(int value) { level = value; manager.setVolume(value); return level; }
 
-		public void setMute(boolean mute) { muted = mute; }
+		public void setMute(boolean mute) { muted = mute; }//静音
 	}
 
-	private class tempoControl implements javax.microedition.media.control.TempoControl
+	private class tempoControl implements javax.microedition.media.control.TempoControl//设置midi节拍
 	{
 		int tempo = 5000;
 		int rate = 5000;
@@ -758,10 +596,7 @@ public class PlatformPlayer implements Player
 		public int setRate(int millirate) { rate=millirate; return rate; }
 	}
 	
-	public void musicFinish()
-	{
-		notifyListeners(PlayerListener.END_OF_MEDIA, 0);
-	}
-	
 	private native void _start(String bgmfile,int loop);
+	
+	
 }

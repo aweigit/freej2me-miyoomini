@@ -133,7 +133,7 @@ public abstract class Displayable
 			if(currentItem<0) { currentItem = 0; }
 			// Draw list items //
 			int ah = height - 50; // allowed height
-			int max = (int)Math.floor(ah / 15); // max items per page
+			int max = (int)Math.floor(ah / 20); // max items per page
 			if(items.size()<max) { max = items.size(); }
 		
 			int page = 0;
@@ -148,8 +148,8 @@ public abstract class Displayable
 			{	
 				if(currentItem == i)
 				{
-					gc.fillRect(0,y,width,20);//选中为黑底白字
-					gc.setColor(0xFFFFFF);
+					gc.fillRect(0,y,width,20);//选中后label为黑底红字
+					gc.setColor(0xF60808);
 					
 					if(items.get(i) instanceof TextField)
 					{
@@ -159,19 +159,45 @@ public abstract class Displayable
 					{
 						Mobile.setTextField(null); 
 					}
+					
+					if(!(items.get(i).getLabel().isEmpty()))
+					{
+						gc.drawString(items.get(i).getLabel()+":", 10, y, Graphics.LEFT);
+						System.out.println("item: "+i+" label:"+items.get(i).getLabel());
+						y+=20;//防止label和text位置重叠
+					}
+					//此时文字都是红色的
+					if(items.get(i) instanceof TextField)
+					{
+						gc.drawString(((TextField)items.get(i)).getString(), width/2, y, Graphics.HCENTER);
+					}
+					if(items.get(i) instanceof StringItem)
+					{
+						gc.drawString(((StringItem)items.get(i)).getText(), width/2, y, Graphics.HCENTER);
+					}
+					if(items.get(i) instanceof ImageItem)
+					{
+						gc.drawImage(((ImageItem)items.get(i)).getImage(), width/2, y, Graphics.HCENTER);
+					}
+					y+=20;
+					gc.setColor(0x000000);//恢复文字为白色
+					continue;
 				}
-				gc.drawString(items.get(i).getLabel()+":", 10, y, Graphics.LEFT);
 				
-				gc.setColor(0x000000);
+				if(!(items.get(i).getLabel().isEmpty()))
+				{
+					gc.drawString(items.get(i).getLabel()+":", 10, y, Graphics.LEFT);
+					System.out.println("item: "+i+" label:"+items.get(i).getLabel());
+					y+=20;//防止label和text位置重叠
+				}
+				
+				//gc.setColor(0x000000);
 				if(items.get(i) instanceof TextField)
 				{
-					y+=20;//防止label和text位置重叠
 					gc.drawString(((TextField)items.get(i)).getString(), width/2, y, Graphics.HCENTER);
 				}
-				
 				if(items.get(i) instanceof StringItem)
 				{
-					//这个地方应该会导致label和string位置重叠,由于没遇到满足情况的jar，具体表现不清楚
 					gc.drawString(((StringItem)items.get(i)).getText(), width/2, y, Graphics.HCENTER);
 				}
 				if(items.get(i) instanceof ImageItem)

@@ -1,17 +1,17 @@
 # 定义编译器和编译选项  
 C_COMPILER = aarch64-none-linux-gnu-gcc
 CPP_COMPILER = aarch64-none-linux-gnu-g++
-CFLAGS = -DM3G_TARGET_ANDROID -DM3G_GL_ES_1_1  -fPIC -O3 -fno-strict-aliasing -march=armv8-a+crc -mtune=cortex-a53 -I./audio -I./include -I./include/linux
+CFLAGS =  -fPIC -O3 -fno-strict-aliasing -march=armv8-a+crc -mtune=cortex-a53 -I./sdlmixer -I./include -I./include/linux
   
 # 定义源文件和目标文件  
-SRCS1 = audio/org_recompile_mobile_Audio.cpp
+SRCS1 = sdlmixer/sdl_mixer_jni.cpp
 OBJS1 = $(SRCS1:%.cpp=%.o) 
 
   
 # 定义生成的目标文件和库名  
 TARGET = libaudio.so
 
-%.o: %.cpp 
+%.o: %.cpp
 	$(CPP_COMPILER) $(CFLAGS)  -c $< -o $@   
   
 # 默认目标  

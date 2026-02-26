@@ -34,12 +34,14 @@ import java.io.InputStreamReader;
 import java.io.BufferedReader;
 import java.io.File;
 
-
+//import javax.sound.midi.*;
+import org.recompile.mobile.SdlMixerManager;
 
 public class Anbu
 {
 	public static void main(String[] args)
-	{	
+	{
+		
 		System.loadLibrary("audio");
 		
 		Anbu app = new Anbu(args);
@@ -200,7 +202,7 @@ public class Anbu
 		
 		
 		soundLevel=Integer.parseInt(args[3]);
-		Audio.setVol(soundLevel);
+		//Audio.setVol(soundLevel);
 		
 		config = new SDLConfig();
 		config.init(appname+lcdWidth+lcdHeight);
@@ -332,7 +334,8 @@ public class Anbu
 					}).start();
 					
 					Mobile.destroy();
-					Audio.destroy();
+					sdl.stop();
+					SdlMixerManager.shutdown();
 					System.exit(0);
 				
 				}
@@ -582,6 +585,7 @@ public class Anbu
 				case 0x40000050: return Mobile.NOKIA_LEFT;
 				case 0x4000004F: return Mobile.NOKIA_RIGHT;
 				case 0x0D: return Mobile.NOKIA_SOFT3;
+				case 0x6F: return Mobile.NOKIA_SOFT3;//专为右摇杆L3预留的ok键
 				
 			}
 		}
@@ -595,6 +599,7 @@ public class Anbu
 				case 0x40000050: return Mobile.NOKIA_LEFT;
 				case 0x4000004F: return Mobile.NOKIA_RIGHT;
 				case 0x0D: return Mobile.NOKIA_SOFT3;
+				case 0x6F: return Mobile.NOKIA_SOFT3;
 				
 				case 0x30: return 109;//m=0
 				case 0x31: return 114;//r=1
@@ -617,6 +622,7 @@ public class Anbu
 				case 0x71: return Mobile.SIEMENS_SOFT1;
 				case 0x77: return Mobile.SIEMENS_SOFT2;
 				case 0x0D: return Mobile.SIEMENS_FIRE;
+				case 0x6F: return Mobile.SIEMENS_FIRE;
 			}
 		}
 		
@@ -631,6 +637,7 @@ public class Anbu
 				case 0x71: return Mobile.MOTOROLA_SOFT1;
 				case 0x77: return Mobile.MOTOROLA_SOFT2;
 				case 0x0D: return Mobile.MOTOROLA_FIRE;
+				case 0x6F: return Mobile.MOTOROLA_FIRE;
 			}
 		}
 		
@@ -658,6 +665,7 @@ public class Anbu
 			case 0x4000004F: return Mobile.KEY_NUM6;
 
 			case 0x0D: return Mobile.KEY_NUM5;
+			case 0x6F: return Mobile.KEY_NUM5;
 
 			case 0x71: return Mobile.NOKIA_SOFT1; //SDLK_q
 			case 0x77: return Mobile.NOKIA_SOFT2;  //SDLK_w
@@ -670,7 +678,7 @@ public class Anbu
 				else
 					soundLevel=0;
 				//System.out.println("音量:"+soundLevel);
-				Audio.setVol(soundLevel);
+				//Audio.setVol(soundLevel);
 				config.settings.put("sound", String.valueOf(soundLevel));
 				config.saveConfig();
 				break;
@@ -679,7 +687,7 @@ public class Anbu
 					soundLevel+=20;
 				else
 					soundLevel=100;
-				Audio.setVol(soundLevel);
+				//Audio.setVol(soundLevel);
 				config.settings.put("sound", String.valueOf(soundLevel));
 				config.saveConfig();
 				//System.out.println("音量:"+soundLevel);
@@ -730,8 +738,8 @@ public class Anbu
 			case -1: 
 				//au.stop();
 				Mobile.destroy();
-				Audio.destroy();
 				sdl.stop();
+				SdlMixerManager.shutdown();
 				
 				System.exit(0);
 				break;
@@ -740,8 +748,8 @@ public class Anbu
 			case 0x1B: 
 				//au.stop();
 				Mobile.destroy();
-				Audio.destroy();
 				sdl.stop();
+				SdlMixerManager.shutdown();
 				
 				System.exit(0);
 				break;
@@ -750,9 +758,9 @@ public class Anbu
 			case 0x4000004a: 
 				//au.stop();
 				Mobile.destroy();
-				Audio.destroy();
 				sdl.stop();
-				
+				SdlMixerManager.shutdown();
+
 				System.exit(0);
 				break;
 		}
