@@ -15,6 +15,12 @@ extern "C" {
 JNIEXPORT jint JNICALL Java_org_recompile_mobile_SdlMixerManager_sdlMixerInit
   (JNIEnv *, jclass, jint, jint, jint, jint);
 
+JNIEXPORT jint JNICALL Java_org_recompile_mobile_SdlMixerManager_sdlHapticInit
+  (JNIEnv *, jclass);
+  
+JNIEXPORT void JNICALL Java_org_recompile_mobile_SdlMixerManager_sdlHaptic
+  (JNIEnv *, jclass, jint);
+
 /*
  * Class:     org_recompile_mobile_SdlMixerManager
  * Method:    sdlMixerLoadMidi

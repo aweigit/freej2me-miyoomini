@@ -14,6 +14,9 @@ public class SdlMixerManager{
      */
     public static native int sdlMixerInit(int frequency, int format, int channels, int chunksize);
     
+    public static native int sdlHapticInit();
+	public static native void sdlHaptic(int duration);
+
     /**
      * 加载MIDI文件
      * @param filePath MIDI文件路径
@@ -112,6 +115,24 @@ public class SdlMixerManager{
             System.err.println("❌ [java]SDL2_mixer初始化失败");
             return false;
         }
+    }
+
+    //初始化震动子系统
+	public static boolean initHaptic() {
+        
+        int result = sdlHapticInit();
+        if (result == 0) {
+            System.out.println("✓ [java]SDL2_Haptic初始化成功");
+            return true;
+        } else {
+            System.err.println("❌ [java]SDL2_Haptic初始化失败");
+            return false;
+        }
+    }
+	
+	public static void vibrate(int duration) {
+        
+        sdlHaptic(duration);
     }
     
     /**

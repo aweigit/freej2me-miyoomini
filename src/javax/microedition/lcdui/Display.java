@@ -27,6 +27,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import org.recompile.mobile.Mobile;
+import org.recompile.mobile.SdlMixerManager;
 
 public class Display
 {
@@ -43,6 +44,8 @@ public class Display
 
 	private Displayable current;
 
+	private boolean isInitHaptic;
+
 	private static Display display;
 
 	public Vector<Runnable> serialCalls;
@@ -54,6 +57,7 @@ public class Display
 	public Display()
 	{
 		display = this;
+		isInitHaptic = false;
 
 		Mobile.setDisplay(this);
 
@@ -162,8 +166,16 @@ public class Display
 
 	public boolean vibrate(int duration)
 	{
-		//System.out.println("Vibrate");
-		return true;
+		boolean ret = false;
+		if(!isInitHaptic)
+		{
+			ret = SdlMixerManager.initHaptic();
+			isInitHaptic = true;
+		}
+			
+		SdlMixerManager.vibrate(duration);
+		//System.out.println("Vibrate:"+duration);
+		return ret;
 	}
 
 }

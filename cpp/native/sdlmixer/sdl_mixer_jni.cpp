@@ -13,6 +13,7 @@
 // 全局状态
 static Mix_Music* currentMusic = NULL;
 static jint currentVolume = 128;
+static SDL_Haptic *haptic = NULL;
 
 // --- 全局变量用于保存 Java 引用 ---
 static JavaVM *g_jvm = NULL; // 保存 JavaVM 引用
@@ -140,6 +141,52 @@ JNIEXPORT jint JNICALL Java_org_recompile_mobile_SdlMixerManager_sdlMixerInit
     printf("✓ SDL2_mixer已初始化 (freq=%d, format=%d, ch=%d, chunk=%d)\n", 
            frequency, format, channels, chunksize);
     return 0;
+}
+
+/**
+ * 初始化SDL2_Haptic
+ */
+JNIEXPORT jint JNICALL Java_org_recompile_mobile_SdlMixerManager_sdlHapticInit
+  (JNIEnv *env, jclass cls) {
+    
+    // 初始化SDL2震动子系统
+    if (SDL_Init(SDL_INIT_HAPTIC) < 0) {
+        CHECK_SDL_ERROR("SDL_Init HAPTIC");
+        return -1;
+    }
+    
+    int count_haptic = SDL_NumHaptics();
+	printf("✓ Haptic num:%d \n",count_haptic);
+	if(count_haptic>0)
+	{
+		haptic = SDL_HapticOpen(0);
+		if (haptic) {
+			if (SDL_HapticRumbleInit(haptic) == 0) {
+				printf("✓ SDL2_Haptic已初始化\n");
+				return 0;
+			}
+			else
+			{
+				printf("SDL2_Haptic初始化失败\n");
+				SDL_HapticClose(haptic);
+				haptic = NULL;
+				return -1;
+			}
+		}
+	}
+    
+	printf("SDL2_Haptic初始化失败\n");
+    return -1;
+}
+
+//震动
+JNIEXPORT void JNICALL Java_org_recompile_mobile_SdlMixerManager_sdlHaptic
+  (JNIEnv *env, jclass cls, jint duration) {
+    
+	if(haptic)
+	{
+		SDL_HapticRumblePlay(haptic, 0.7f, duration);
+	}
 }
 
 /**
@@ -451,6 +498,11 @@ JNIEXPORT void JNICALL Java_org_recompile_mobile_SdlMixerManager_sdlMixerQuit
     
     // 退出mixer扩展
     Mix_Quit();
+
+    if(haptic)
+	{
+		SDL_HapticClose(haptic);
+	}
     
     // 退出SDL2
     SDL_Quit();

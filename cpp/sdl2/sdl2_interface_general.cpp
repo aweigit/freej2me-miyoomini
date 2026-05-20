@@ -148,8 +148,8 @@ unsigned char joymouseImage[374] =
 uint32_t frameDeadline = 0;
 
 #define STICK_DEAD_ZONE 8000  // 死区阈值，可调
-#define TRIGGER_PRESS_THRESHOLD   8000  // 按下阈值
-#define TRIGGER_RELEASE_THRESHOLD 2000  // 释放阈值（必须 <= PRESS）
+#define TRIGGER_PRESS_THRESHOLD   0x7000  // 按下阈值
+#define TRIGGER_RELEASE_THRESHOLD 0x5000  // 释放阈值（必须 <= PRESS）
 // 配置参数（可调整）
 #define DEAD_ZONE      0.15f   // 摇杆死区（0.0 ～ 1.0）
 #define SENSITIVITY    4.0f    // 每帧最大移动像素（越高越快）
@@ -828,7 +828,7 @@ void *startCapturing(void *args)
 					// printf("keycode: 0x%x name: %s state: %d\n",event.key.keysym.sym,SDL_GetKeyName(event.key.keysym.sym),event.key.state);
 					// fflush(stdout);
 					
-					// int key = e.key.keysym.sym;
+					int key = e.key.keysym.sym;
 					// if(key==SDLK_UP)//上
 					// {
 					// 	if(rotate==1)
@@ -892,12 +892,12 @@ void *startCapturing(void *args)
 					// 	}
 					// }
 					
-					// if(!use_mouse)
-					// {
-					// 	sendKey(key, e.key.state == SDL_PRESSED);
-					// }
+					if(!use_mouse)
+					{
+						sendKey(key, e.key.state == SDL_PRESSED);
+					}
+					break;
 				}
-				break;
 
 				case SDL_CONTROLLERAXISMOTION: {
                     Sint16 value = e.caxis.value;
