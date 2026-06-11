@@ -205,7 +205,7 @@ public class PlatformPlayer implements Player
 		stop();
 		player.deallocate();
 		
-		state = Player.UNREALIZED;
+		state = Player.REALIZED;
 	}
 
 	public String getContentType() { return contentType; }
@@ -356,6 +356,7 @@ public class PlatformPlayer implements Player
 		
 		public void stop()
 		{
+			if(state == Player.PREFETCHED) { return; }
 			manager.sdlMixerPauseMusic();
 			state = Player.PREFETCHED;
 			notifyListeners(PlayerListener.STOPPED, 0);
@@ -492,6 +493,7 @@ public class PlatformPlayer implements Player
 		
 		public void stop()
 		{
+			if(state == Player.PREFETCHED) { return; }
 			manager.sdlMixerPauseWav();
 			state = Player.PREFETCHED;
 			notifyListeners(PlayerListener.STOPPED, 0);
