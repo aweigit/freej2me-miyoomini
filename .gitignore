@@ -1,1 +1,8 @@
 build/
+cpp/native/libm3g.so
+cpp/native/libmicro3d.so
+cpp/native/m3g/*.o
+cpp/native/m3g/src/*.o
+cpp/native/micro3d/src/*.o
+cpp/sdl2/sdl_interface
+build/
