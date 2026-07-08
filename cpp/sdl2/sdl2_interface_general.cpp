@@ -28,14 +28,591 @@ along with FreeJ2ME.  If not, see http://www.gnu.org/licenses/
 #include <iostream>
 #include <pthread.h>
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include "cJSON.h"
 #include <map>
 #include <math.h>
+#include <cstring>
+#include <fstream>
 
 #define SDL_AXIS_TRIGGERLEFT 100
 #define SDL_AXIS_TRIGGERRIGHT 101
 
 #define BYTES 2
+
+// Display dimensions
+static int display_width = 640, display_height = 480;
+
+// OSD Menu
+#define MENU_ITEM_KEYMODE    0
+#define MENU_ITEM_ROTATE     1
+#define MENU_ITEM_MOUSE      2
+#define MENU_ITEM_FPS        3
+#define MENU_ITEM_NUMPAD     4
+#define MENU_ITEM_OK         5
+#define MENU_ITEM_KEYMAP     6
+#define MENU_ITEM_EXIT       7
+#define MENU_ITEM_COUNT      8
+
+static const char *menu_item_names[MENU_ITEM_COUNT] = {"Key Mode", "Rotate", "Mouse", "Show FPS", "D-Pad Num", "Send OK", "Key Mapping", "Exit Game"};
+
+static const char *keymode_names[] = {"P (Phone)", "N (Nokia)", "E (Ericsson)", "S (Siemens)", "M (Motorola)"};
+#define KEYMODE_COUNT 5
+
+static const char *rotate_names[] = {"Off", "90 CW", "90 CCW", "180"};
+#define ROTATE_COUNT 4
+
+static TTF_Font *menu_font = NULL;
+static int menu_font_size;
+static int menu_line_h;
+static int menu_width;
+static int menu_padding;
+static int menu_border;
+
+static struct {
+	int visible;
+	int selection;
+	int need_redraw;
+	SDL_Texture *tex;
+	int keymode_index;
+	int rotate_index;
+	int mouse_enabled;
+	int fps_enabled;
+	int numpad_enabled;
+	int keymap_mode;  // 0=normal, 1=selecting key, 2=waiting for button
+	int keymap_selection;  // which J2ME key is being mapped
+	char keymap_waiting_text[64];  // text to show when waiting for button
+} settings_menu = {0, 0, 1, NULL, 0, 0, 0, 0, 0, 0, 0, ""};
+
+// Key mapping
+#define KEYMAP_COUNT 10
+static const char *keymap_names[KEYMAP_COUNT] = {"Left", "Right", "OK", "Star(*)", "Pound(#)", "0", "1", "3", "7", "9"};
+static const char *keymap_json_keys[KEYMAP_COUNT] = {"左键", "右键", "OK", "*", "#", "0", "1", "3", "7", "9"};  // JSON键名（与原始格式一致）
+static const char *keymap_defaults[KEYMAP_COUNT] = {"Y", "A", "X", "SELECT", "START", "B", "L", "R", "L2", "R2"};
+static char keymap_values[KEYMAP_COUNT][16];  // current mappings
+
+// Key mapping mode
+#define KEYMAP_MODE_NORMAL   0
+#define KEYMAP_MODE_SELECT   1
+#define KEYMAP_MODE_WAITING  2
+
+// Forward declarations
+void setEmuKey(const char * name, int key);
+
+// Load keymap from file
+static void load_keymap() {
+	// Set defaults
+	for (int i = 0; i < KEYMAP_COUNT; i++) {
+		strncpy(keymap_values[i], keymap_defaults[i], sizeof(keymap_values[i]) - 1);
+	}
+	
+	// Try to load from keymap.cfg (同级目录)
+	FILE *fp = fopen("keymap.cfg", "r");
+	if (fp) {
+		fseek(fp, 0, SEEK_END);
+		long fsize = ftell(fp);
+		fseek(fp, 0, SEEK_SET);
+		char *json_str = (char*)malloc(fsize + 1);
+		if (json_str) {
+			fread(json_str, 1, fsize, fp);
+			json_str[fsize] = '\0';
+			
+			cJSON *root = cJSON_Parse(json_str);
+			if (root) {
+				// Map J2ME key names to our indices (使用中文键名，与原始格式一致)
+				for (int i = 0; i < KEYMAP_COUNT; i++) {
+					cJSON *item = cJSON_GetObjectItem(root, keymap_json_keys[i]);
+					if (item && cJSON_IsString(item)) {
+						strncpy(keymap_values[i], item->valuestring, sizeof(keymap_values[i]) - 1);
+					}
+				}
+				cJSON_Delete(root);
+			}
+			free(json_str);
+		}
+		fclose(fp);
+	}
+	// 热加载
+	setEmuKey(keymap_values[0], SDLK_q);     // 左
+	setEmuKey(keymap_values[1], SDLK_w);     // 右
+	setEmuKey(keymap_values[2], SDLK_RETURN);// OK
+	setEmuKey(keymap_values[3], SDLK_e);     // *
+	setEmuKey(keymap_values[4], SDLK_r);     // #
+	setEmuKey(keymap_values[5], SDLK_0);     // 0
+	setEmuKey(keymap_values[6], SDLK_1);     // 1
+	setEmuKey(keymap_values[7], SDLK_3);     // 3
+	setEmuKey(keymap_values[8], SDLK_7);     // 7
+	setEmuKey(keymap_values[9], SDLK_9);     // 9
+}
+
+// Save keymap to file
+// 热加载：应用keymap到按键变量
+// forward declaration
+void setEmuKey(const char * name, int key);
+
+static void save_keymap() {
+	cJSON *root = cJSON_CreateObject();
+	for (int i = 0; i < KEYMAP_COUNT; i++) {
+		cJSON_AddStringToObject(root, keymap_json_keys[i], keymap_values[i]);
+	}
+	char *json_str = cJSON_Print(root);
+	if (json_str) {
+		FILE *fp = fopen("keymap.cfg", "w");
+		if (fp) { fprintf(fp, "%s", json_str); fclose(fp); }
+		cJSON_free(json_str);
+	}
+	cJSON_Delete(root);
+	// 热加载 - 使用SDL键值直接设置
+	setEmuKey(keymap_values[0], SDLK_q);     // 左
+	setEmuKey(keymap_values[1], SDLK_w);     // 右
+	setEmuKey(keymap_values[2], SDLK_RETURN);// OK
+	setEmuKey(keymap_values[3], SDLK_e);     // *
+	setEmuKey(keymap_values[4], SDLK_r);     // #
+	setEmuKey(keymap_values[5], SDLK_0);     // 0
+	setEmuKey(keymap_values[6], SDLK_1);     // 1
+	setEmuKey(keymap_values[7], SDLK_3);     // 3
+	setEmuKey(keymap_values[8], SDLK_7);     // 7
+	setEmuKey(keymap_values[9], SDLK_9);     // 9
+}
+
+static void reset_keymap() {
+	for (int i = 0; i < KEYMAP_COUNT; i++) {
+		strncpy(keymap_values[i], keymap_defaults[i], sizeof(keymap_values[i]) - 1);
+	}
+	save_keymap();
+}
+
+// 查找某个手柄按键当前映射到哪个J2ME键（返回索引，-1表示未找到）
+static int find_keymap_index_for_button(const char *button_name) {
+	for (int i = 0; i < KEYMAP_COUNT; i++) {
+		if (strcmp(keymap_values[i], button_name) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+// 设置按键映射（带互换逻辑）
+static void set_keymap_with_swap(int target_index, const char *new_button) {
+	// 检查新按键是否已被其他J2ME键占用
+	int existing_index = find_keymap_index_for_button(new_button);
+	if (existing_index >= 0 && existing_index != target_index) {
+		// 互换：把原来映射到new_button的J2ME键改为target_index当前的值
+		strncpy(keymap_values[existing_index], keymap_values[target_index], sizeof(keymap_values[0]) - 1);
+	}
+	// 设置目标J2ME键映射到新按键
+	strncpy(keymap_values[target_index], new_button, sizeof(keymap_values[0]) - 1);
+	save_keymap();
+}
+
+// Get button name from SDL button code
+static const char* get_button_name(int button) {
+	switch (button) {
+		case SDL_CONTROLLER_BUTTON_A: return "A";
+		case SDL_CONTROLLER_BUTTON_B: return "B";
+		case SDL_CONTROLLER_BUTTON_X: return "X";
+		case SDL_CONTROLLER_BUTTON_Y: return "Y";
+		case SDL_CONTROLLER_BUTTON_BACK: return "SELECT";
+		case SDL_CONTROLLER_BUTTON_START: return "START";
+		case SDL_CONTROLLER_BUTTON_LEFTSTICK: return "L3";
+		case SDL_CONTROLLER_BUTTON_RIGHTSTICK: return "R3";
+		case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: return "L";
+		case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: return "R";
+		case SDL_CONTROLLER_BUTTON_DPAD_UP: return "UP";
+		case SDL_CONTROLLER_BUTTON_DPAD_DOWN: return "DOWN";
+		case SDL_CONTROLLER_BUTTON_DPAD_LEFT: return "LEFT";
+		case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: return "RIGHT";
+		default: return "Unknown";
+	}
+}
+
+// Get axis button name (L2/R2)
+static const char* get_axis_button_name(int axis, int value) {
+	if (axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT && value > 16384) return "L2";
+	if (axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT && value > 16384) return "R2";
+	return NULL;
+}
+
+// Current settings
+static int current_keymode = 0;  // 0=p, 1=n, 2=e, 3=s, 4=m
+static int current_rotate = 0;
+static int current_mouse = 0;
+
+// Forward declarations
+extern int rotate;
+extern bool use_mouse;
+extern bool capturing;
+extern bool use_numpad;
+void sendKey(int key, bool pressed);
+
+// FPS counter variables
+static int fps_counter = 0;
+static int fps_value = 0;
+static Uint32 fps_last_time = 0;
+static TTF_Font *fps_font = NULL;
+static int fps_font_size = 16;
+static int fps_enabled = 0;  // 0=disabled, 1=enabled
+
+static void settings_menu_adjust(int item, int dir);
+static void settings_menu_draw(SDL_Renderer *renderer);
+
+/* Settings menu functions */
+static void settings_menu_get_value_str(int item, char *buf, int buflen)
+{
+	switch (item) {
+	case MENU_ITEM_KEYMODE:
+		snprintf(buf, buflen, "%s", keymode_names[settings_menu.keymode_index]);
+		break;
+	case MENU_ITEM_ROTATE:
+		snprintf(buf, buflen, "%s", rotate_names[settings_menu.rotate_index]);
+		break;
+	case MENU_ITEM_MOUSE:
+		snprintf(buf, buflen, "%s", settings_menu.mouse_enabled ? "On" : "Off");
+		break;
+	case MENU_ITEM_FPS:
+		snprintf(buf, buflen, "%s", settings_menu.fps_enabled ? "On" : "Off");
+		break;
+	case MENU_ITEM_NUMPAD:
+		snprintf(buf, buflen, "%s", settings_menu.numpad_enabled ? "Num (2468)" : "D-Pad");
+		break;
+	case MENU_ITEM_OK:
+		buf[0] = '\0';
+		break;
+	case MENU_ITEM_KEYMAP:
+		buf[0] = '\0';
+		break;
+	case MENU_ITEM_EXIT:
+		buf[0] = '\0';
+		break;
+	default:
+		buf[0] = '\0';
+	}
+}
+
+static void settings_menu_adjust(int item, int dir)
+{
+	switch (item) {
+	case MENU_ITEM_KEYMODE:
+		settings_menu.keymode_index += dir;
+		if (settings_menu.keymode_index < 0) settings_menu.keymode_index = KEYMODE_COUNT - 1;
+		if (settings_menu.keymode_index >= KEYMODE_COUNT) settings_menu.keymode_index = 0;
+		// Send 'c' to Java to cycle key mode
+		sendKey(SDLK_c, 1);
+		sendKey(SDLK_c, 0);
+		break;
+	case MENU_ITEM_ROTATE:
+		settings_menu.rotate_index += dir;
+		if (settings_menu.rotate_index < 0) settings_menu.rotate_index = ROTATE_COUNT - 1;
+		if (settings_menu.rotate_index >= ROTATE_COUNT) settings_menu.rotate_index = 0;
+		rotate = settings_menu.rotate_index;
+		break;
+	case MENU_ITEM_MOUSE:
+		settings_menu.mouse_enabled = !settings_menu.mouse_enabled;
+		use_mouse = settings_menu.mouse_enabled;
+		break;
+	case MENU_ITEM_FPS:
+		settings_menu.fps_enabled = !settings_menu.fps_enabled;
+		fps_enabled = settings_menu.fps_enabled;
+		break;
+	case MENU_ITEM_NUMPAD:
+		settings_menu.numpad_enabled = !settings_menu.numpad_enabled;
+		use_numpad = settings_menu.numpad_enabled;
+		break;
+	case MENU_ITEM_OK:
+		// Send OK key press
+		sendKey(SDLK_RETURN, 1);
+		SDL_Delay(50);
+		sendKey(SDLK_RETURN, 0);
+		break;
+	case MENU_ITEM_KEYMAP:
+		// Enter key mapping selection mode
+		settings_menu.keymap_mode = KEYMAP_MODE_SELECT;
+		settings_menu.keymap_selection = 0;
+		settings_menu.need_redraw = 1;
+		return;  // Don't close menu
+	case MENU_ITEM_EXIT:
+		// Exit game
+		capturing = false;
+		sendKey(-1, true);
+		fflush(stderr);
+		SDL_Event quit_event;
+		quit_event.type = SDL_QUIT;
+		SDL_PushEvent(&quit_event);
+		break;
+	}
+	settings_menu.need_redraw = 1;
+}
+
+static void settings_menu_draw(SDL_Renderer *renderer)
+{
+	if (!menu_font) return;
+
+	// Key mapping mode: show key list
+	if (settings_menu.keymap_mode == KEYMAP_MODE_SELECT) {
+		int menu_w = menu_width;
+		int menu_h = (KEYMAP_COUNT + 3) * menu_line_h + menu_padding * 2;  // +3 for title, reset, and padding
+		int bd = menu_border;
+
+		if (settings_menu.need_redraw || !settings_menu.tex) {
+			SDL_Surface *surf = SDL_CreateRGBSurface(0, menu_w, menu_h, 32,
+				0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+			if (!surf) return;
+
+			SDL_FillRect(surf, NULL, SDL_MapRGBA(surf->format, 0, 0, 0, 200));
+
+			Uint32 white = SDL_MapRGBA(surf->format, 255, 255, 255, 255);
+			SDL_Rect border;
+			border = {0, 0, menu_w, bd};
+			SDL_FillRect(surf, &border, white);
+			border = {0, menu_h - bd, menu_w, bd};
+			SDL_FillRect(surf, &border, white);
+			border = {0, 0, bd, menu_h};
+			SDL_FillRect(surf, &border, white);
+			border = {menu_w - bd, 0, bd, menu_h};
+			SDL_FillRect(surf, &border, white);
+
+			int y = menu_padding;
+			char buf[64];
+			
+			// Title
+			SDL_Color title_color = {255, 255, 0, 255};
+			SDL_Surface *title_surf = TTF_RenderText_Blended(menu_font, "Key Mapping", title_color);
+			if (title_surf) {
+				SDL_Rect dst = {menu_padding, y, title_surf->w, title_surf->h};
+				SDL_BlitSurface(title_surf, NULL, surf, &dst);
+				SDL_FreeSurface(title_surf);
+			}
+			y += menu_line_h;
+
+			// Key list
+			for (int i = 0; i < KEYMAP_COUNT; i++) {
+				SDL_Color name_color = (i == settings_menu.keymap_selection) ?
+					SDL_Color{255, 255, 0, 255} : SDL_Color{255, 255, 255, 255};
+				SDL_Color val_color = {0, 255, 0, 255};
+
+				SDL_Surface *name_surf = TTF_RenderText_Blended(menu_font, keymap_names[i], name_color);
+				if (name_surf) {
+					SDL_Rect dst = {menu_padding, y, name_surf->w, name_surf->h};
+					SDL_BlitSurface(name_surf, NULL, surf, &dst);
+					SDL_FreeSurface(name_surf);
+				}
+
+				snprintf(buf, sizeof(buf), "%s", keymap_values[i]);
+				SDL_Surface *val_surf = TTF_RenderText_Blended(menu_font, buf, val_color);
+				if (val_surf) {
+					SDL_Rect dst = {menu_w - val_surf->w - menu_padding, y, val_surf->w, val_surf->h};
+					SDL_BlitSurface(val_surf, NULL, surf, &dst);
+					SDL_FreeSurface(val_surf);
+				}
+
+				y += menu_line_h;
+			}
+
+			// Reset to Default选项
+			SDL_Color reset_color = (settings_menu.keymap_selection == KEYMAP_COUNT) ?
+				SDL_Color{255, 100, 100, 255} : SDL_Color{255, 150, 150, 255};
+			SDL_Surface *reset_surf = TTF_RenderText_Blended(menu_font, "Reset to Default", reset_color);
+			if (reset_surf) {
+				SDL_Rect dst = {menu_padding, y, reset_surf->w, reset_surf->h};
+				SDL_BlitSurface(reset_surf, NULL, surf, &dst);
+				SDL_FreeSurface(reset_surf);
+			}
+
+			if (settings_menu.tex) SDL_DestroyTexture(settings_menu.tex);
+			settings_menu.tex = SDL_CreateTextureFromSurface(renderer, surf);
+			SDL_FreeSurface(surf);
+			if (settings_menu.tex)
+				SDL_SetTextureBlendMode(settings_menu.tex, SDL_BLENDMODE_BLEND);
+			settings_menu.need_redraw = 0;
+		}
+
+		if (settings_menu.tex) {
+			SDL_Rect dst;
+			dst.w = menu_w;
+			dst.h = menu_h;
+			dst.x = (display_width - dst.w) / 2;
+			dst.y = (display_height - dst.h) / 2;
+			SDL_RenderCopy(renderer, settings_menu.tex, NULL, &dst);
+		}
+		return;
+	}
+
+	// Key mapping mode: waiting for button press
+	if (settings_menu.keymap_mode == KEYMAP_MODE_WAITING) {
+		int menu_w = menu_width;
+		int menu_h = 3 * menu_line_h + menu_padding * 2;
+		int bd = menu_border;
+
+		if (settings_menu.need_redraw || !settings_menu.tex) {
+			SDL_Surface *surf = SDL_CreateRGBSurface(0, menu_w, menu_h, 32,
+				0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+			if (!surf) return;
+
+			SDL_FillRect(surf, NULL, SDL_MapRGBA(surf->format, 0, 0, 0, 200));
+
+			Uint32 white = SDL_MapRGBA(surf->format, 255, 255, 255, 255);
+			SDL_Rect border;
+			border = {0, 0, menu_w, bd};
+			SDL_FillRect(surf, &border, white);
+			border = {0, menu_h - bd, menu_w, bd};
+			SDL_FillRect(surf, &border, white);
+			border = {0, 0, bd, menu_h};
+			SDL_FillRect(surf, &border, white);
+			border = {menu_w - bd, 0, bd, menu_h};
+			SDL_FillRect(surf, &border, white);
+
+			int y = menu_padding;
+			
+			// Title
+			SDL_Color title_color = {255, 255, 0, 255};
+			SDL_Surface *title_surf = TTF_RenderText_Blended(menu_font, "Key Mapping", title_color);
+			if (title_surf) {
+				SDL_Rect dst = {menu_padding, y, title_surf->w, title_surf->h};
+				SDL_BlitSurface(title_surf, NULL, surf, &dst);
+				SDL_FreeSurface(title_surf);
+			}
+			y += menu_line_h;
+
+			// Waiting text
+			SDL_Color wait_color = {255, 100, 100, 255};
+			SDL_Surface *wait_surf = TTF_RenderText_Blended(menu_font, settings_menu.keymap_waiting_text, wait_color);
+			if (wait_surf) {
+				SDL_Rect dst = {menu_padding, y, wait_surf->w, wait_surf->h};
+				SDL_BlitSurface(wait_surf, NULL, surf, &dst);
+				SDL_FreeSurface(wait_surf);
+			}
+			y += menu_line_h;
+
+			// Current mapping
+			char current[64];
+			snprintf(current, sizeof(current), "Current: %s", keymap_values[settings_menu.keymap_selection]);
+			SDL_Color current_color = {0, 255, 0, 255};
+			SDL_Surface *current_surf = TTF_RenderText_Blended(menu_font, current, current_color);
+			if (current_surf) {
+				SDL_Rect dst = {menu_padding, y, current_surf->w, current_surf->h};
+				SDL_BlitSurface(current_surf, NULL, surf, &dst);
+				SDL_FreeSurface(current_surf);
+			}
+
+			if (settings_menu.tex) SDL_DestroyTexture(settings_menu.tex);
+			settings_menu.tex = SDL_CreateTextureFromSurface(renderer, surf);
+			SDL_FreeSurface(surf);
+			if (settings_menu.tex)
+				SDL_SetTextureBlendMode(settings_menu.tex, SDL_BLENDMODE_BLEND);
+			settings_menu.need_redraw = 0;
+		}
+
+		if (settings_menu.tex) {
+			SDL_Rect dst;
+			dst.w = menu_w;
+			dst.h = menu_h;
+			dst.x = (display_width - dst.w) / 2;
+			dst.y = (display_height - dst.h) / 2;
+			SDL_RenderCopy(renderer, settings_menu.tex, NULL, &dst);
+		}
+		return;
+	}
+
+	// Normal menu mode
+	int menu_w = menu_width;
+	int menu_h = MENU_ITEM_COUNT * menu_line_h + menu_padding * 2;
+	int bd = menu_border;
+
+	if (settings_menu.need_redraw || !settings_menu.tex) {
+		SDL_Surface *surf = SDL_CreateRGBSurface(0, menu_w, menu_h, 32,
+			0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+		if (!surf) return;
+
+		SDL_FillRect(surf, NULL, SDL_MapRGBA(surf->format, 0, 0, 0, 200));
+
+		Uint32 white = SDL_MapRGBA(surf->format, 255, 255, 255, 255);
+		SDL_Rect border;
+		border = {0, 0, menu_w, bd};
+		SDL_FillRect(surf, &border, white);
+		border = {0, menu_h - bd, menu_w, bd};
+		SDL_FillRect(surf, &border, white);
+		border = {0, 0, bd, menu_h};
+		SDL_FillRect(surf, &border, white);
+		border = {menu_w - bd, 0, bd, menu_h};
+		SDL_FillRect(surf, &border, white);
+
+		int y = menu_padding;
+		char buf[64], val_buf[80];
+		for (int i = 0; i < MENU_ITEM_COUNT; i++) {
+			SDL_Color name_color = (i == settings_menu.selection) ?
+				SDL_Color{255, 255, 0, 255} : SDL_Color{255, 255, 255, 255};
+			SDL_Color val_color = {0, 255, 0, 255};
+
+			SDL_Surface *name_surf = TTF_RenderText_Blended(menu_font, menu_item_names[i], name_color);
+			if (name_surf) {
+				SDL_Rect dst = {menu_padding, y, name_surf->w, name_surf->h};
+				SDL_BlitSurface(name_surf, NULL, surf, &dst);
+				SDL_FreeSurface(name_surf);
+			}
+
+			settings_menu_get_value_str(i, buf, sizeof(buf));
+			if (i == settings_menu.selection)
+				snprintf(val_buf, sizeof(val_buf), "< %s >", buf);
+			else
+				snprintf(val_buf, sizeof(val_buf), "  %s  ", buf);
+
+			SDL_Surface *val_surf = TTF_RenderText_Blended(menu_font, val_buf, val_color);
+			if (val_surf) {
+				SDL_Rect dst = {menu_w - val_surf->w - menu_padding, y, val_surf->w, val_surf->h};
+				SDL_BlitSurface(val_surf, NULL, surf, &dst);
+				SDL_FreeSurface(val_surf);
+			}
+
+			y += menu_line_h;
+		}
+
+		if (settings_menu.tex) SDL_DestroyTexture(settings_menu.tex);
+		settings_menu.tex = SDL_CreateTextureFromSurface(renderer, surf);
+		SDL_FreeSurface(surf);
+		if (settings_menu.tex)
+			SDL_SetTextureBlendMode(settings_menu.tex, SDL_BLENDMODE_BLEND);
+		settings_menu.need_redraw = 0;
+	}
+
+	if (settings_menu.tex) {
+		SDL_Rect dst;
+		dst.w = menu_w;
+		dst.h = menu_h;
+		dst.x = (display_width - dst.w) / 2;
+		dst.y = (display_height - dst.h) / 2;
+		SDL_RenderCopy(renderer, settings_menu.tex, NULL, &dst);
+	}
+}
+
+static void fps_draw(SDL_Renderer *renderer)
+{
+	if (!fps_font || !fps_enabled) return;
+
+	// Update FPS counter
+	fps_counter++;
+	Uint32 current_time = SDL_GetTicks();
+	if (current_time - fps_last_time >= 1000) {
+		fps_value = fps_counter;
+		fps_counter = 0;
+		fps_last_time = current_time;
+	}
+
+	// Render FPS text
+	char fps_text[32];
+	snprintf(fps_text, sizeof(fps_text), "FPS: %d", fps_value);
+	
+	SDL_Color color = {255, 255, 0, 255}; // Yellow
+	SDL_Surface *surface = TTF_RenderText_Blended(fps_font, fps_text, color);
+	if (surface) {
+		SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+		if (texture) {
+			SDL_Rect dst = {10, 10, surface->w, surface->h};
+			SDL_RenderCopy(renderer, texture, NULL, &dst);
+			SDL_DestroyTexture(texture);
+		}
+		SDL_FreeSurface(surface);
+	}
+}
 
 //模拟器按键与sdl键值对应关系
 int KEY_LEFT=SDLK_q;
@@ -66,11 +643,11 @@ int joy2emu(int joy)
 	switch(joy)
 	{
 		case SDL_CONTROLLER_BUTTON_Y:
-			return BUTTON_X;
-		case SDL_CONTROLLER_BUTTON_A:
-			return BUTTON_B;
-		case SDL_CONTROLLER_BUTTON_X:
 			return BUTTON_Y;
+		case SDL_CONTROLLER_BUTTON_A:
+			return BUTTON_A;
+		case SDL_CONTROLLER_BUTTON_X:
+			return BUTTON_X;
 		case SDL_CONTROLLER_BUTTON_BACK:
 			return BUTTON_BACK;
 		case SDL_CONTROLLER_BUTTON_START:
@@ -84,7 +661,7 @@ int joy2emu(int joy)
 		case SDL_AXIS_TRIGGERRIGHT:
 			return TRIGGERRIGHT;
 		case SDL_CONTROLLER_BUTTON_B:
-			return BUTTON_A;
+			return BUTTON_B;
 	}
 	
 	return 0;
@@ -96,8 +673,6 @@ pthread_t t_capturing;
 
 //原始游戏画面大小
 int source_width = 0, source_height = 0;
-//掌机的屏幕大小
-int display_width = 640, display_height = 480;
 
 unsigned int last_time = 0;
 
@@ -349,16 +924,28 @@ void sendKey_Direct(int key , bool pressed)
 	switch (key)
 	{
 		case SDL_CONTROLLER_BUTTON_DPAD_UP:
-			newkey = (rotate ==0 ? SDLK_UP : (rotate == 2 ? SDLK_RIGHT : SDLK_LEFT ));
+			if(rotate == 0) newkey = SDLK_UP;
+			else if(rotate == 1) newkey = SDLK_LEFT;
+			else if(rotate == 2) newkey = SDLK_RIGHT;
+			else if(rotate == 3) newkey = SDLK_DOWN;
 			break;
 		case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-			newkey = (rotate ==0 ? SDLK_DOWN : (rotate == 2 ? SDLK_LEFT : SDLK_RIGHT));
+			if(rotate == 0) newkey = SDLK_DOWN;
+			else if(rotate == 1) newkey = SDLK_RIGHT;
+			else if(rotate == 2) newkey = SDLK_LEFT;
+			else if(rotate == 3) newkey = SDLK_UP;
 			break;
 		case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
-			newkey = (rotate ==0 ? SDLK_LEFT : (rotate == 2 ? SDLK_UP : SDLK_DOWN));
+			if(rotate == 0) newkey = SDLK_LEFT;
+			else if(rotate == 1) newkey = SDLK_DOWN;
+			else if(rotate == 2) newkey = SDLK_UP;
+			else if(rotate == 3) newkey = SDLK_RIGHT;
 			break;
 		case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-			newkey = (rotate ==0 ? SDLK_RIGHT : (rotate == 2 ? SDLK_DOWN : SDLK_UP));
+			if(rotate == 0) newkey = SDLK_RIGHT;
+			else if(rotate == 1) newkey = SDLK_UP;
+			else if(rotate == 2) newkey = SDLK_DOWN;
+			else if(rotate == 3) newkey = SDLK_LEFT;
 			break;
 		default:
 			return;
@@ -380,16 +967,28 @@ void sendKey_Axis(int key , bool pressed)
 	switch (key)
 	{
 		case SDLK_UP:
-			newkey = (rotate ==0 ? SDLK_UP : (rotate == 2 ? SDLK_RIGHT : SDLK_LEFT));
+			if(rotate == 0) newkey = SDLK_UP;
+			else if(rotate == 1) newkey = SDLK_LEFT;
+			else if(rotate == 2) newkey = SDLK_RIGHT;
+			else if(rotate == 3) newkey = SDLK_DOWN;
 			break;
 		case SDLK_DOWN:
-			newkey = (rotate ==0 ? SDLK_DOWN : (rotate == 2 ? SDLK_LEFT : SDLK_RIGHT));
+			if(rotate == 0) newkey = SDLK_DOWN;
+			else if(rotate == 1) newkey = SDLK_RIGHT;
+			else if(rotate == 2) newkey = SDLK_LEFT;
+			else if(rotate == 3) newkey = SDLK_UP;
 			break;
 		case SDLK_LEFT:
-			newkey = (rotate ==0 ? SDLK_LEFT : (rotate == 2 ? SDLK_UP : SDLK_DOWN));
+			if(rotate == 0) newkey = SDLK_LEFT;
+			else if(rotate == 1) newkey = SDLK_DOWN;
+			else if(rotate == 2) newkey = SDLK_UP;
+			else if(rotate == 3) newkey = SDLK_RIGHT;
 			break;
 		case SDLK_RIGHT:
-			newkey = (rotate ==0 ? SDLK_RIGHT : (rotate == 2 ? SDLK_DOWN : SDLK_UP ));
+			if(rotate == 0) newkey = SDLK_RIGHT;
+			else if(rotate == 1) newkey = SDLK_UP;
+			else if(rotate == 2) newkey = SDLK_DOWN;
+			else if(rotate == 3) newkey = SDLK_LEFT;
 			break;
 		default:
 			return;
@@ -557,6 +1156,13 @@ void drawFrame(unsigned char *frame, SDL_Texture *mTexture,size_t pitch, SDL_Rec
 	
 	//SDL_RenderCopy(mRenderer, mOverlay, NULL, dest);
 
+	// Draw settings menu if visible
+	if (settings_menu.visible)
+		settings_menu_draw(mRenderer);
+
+	// Draw FPS counter
+	fps_draw(mRenderer);
+
 	//更新到屏幕
 	SDL_RenderPresent(mRenderer);
 	
@@ -662,6 +1268,43 @@ void init()
 	
 	SDL_RenderClear(mRenderer);
 	SDL_RenderPresent(mRenderer);
+
+	// Initialize TTF for OSD menu
+	if (TTF_Init() == 0) {
+		menu_font_size = display_height / 30;
+		if (menu_font_size < 12) menu_font_size = 12;
+		menu_line_h = menu_font_size * 3 / 2;
+		menu_width = display_width * 2 / 3;
+		menu_padding = menu_font_size / 2;
+		menu_border = display_height / 240;
+		if (menu_border < 1) menu_border = 1;
+
+		// Try to load a font
+		const char *font_paths[] = {
+			"/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+			"/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
+			"/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+			"font.ttf",
+			NULL
+		};
+		for (int i = 0; font_paths[i]; i++) {
+			menu_font = TTF_OpenFont(font_paths[i], menu_font_size);
+			if (menu_font) {
+				printf("Loaded font: %s\n", font_paths[i]);
+				// Also load FPS font with smaller size
+				fps_font = TTF_OpenFont(font_paths[i], fps_font_size);
+				break;
+			}
+		}
+		if (!menu_font) {
+			printf("Warning: Could not load any font, OSD menu disabled\n");
+		}
+	} else {
+		printf("Warning: TTF_Init failed, OSD menu disabled\n");
+	}
+	
+	// Load key mapping
+	load_keymap();
 	
 }
 
@@ -763,10 +1406,17 @@ void startStreaming()
 			
 			drawFrame(frame, mTexture, pitch, &dest);
 		}
-        else
+		else
         {
             rotate_image(frame,tmp_frame,source_width, source_height,rotate);
-			drawFrame(tmp_frame, romTexture, ropitch, &rodest);
+			if(rotate == 3) // 180度：尺寸不变，用原纹理
+			{
+				drawFrame(tmp_frame, mTexture, pitch, &dest);
+			}
+			else // 90度旋转：宽高互换
+			{
+				drawFrame(tmp_frame, romTexture, ropitch, &rodest);
+			}
         }
 
 
@@ -894,6 +1544,56 @@ void *startCapturing(void *args)
 					
 					if(!use_mouse)
 					{
+						// Menu toggle with F1
+						if(key == SDLK_F1 && e.key.state == SDL_PRESSED)
+						{
+							settings_menu.visible = !settings_menu.visible;
+							settings_menu.need_redraw = 1;
+							break;
+						}
+						
+						// Handle menu navigation when menu is visible
+						if(settings_menu.visible && e.key.state == SDL_PRESSED)
+						{
+							if(key == SDLK_UP)
+							{
+								settings_menu.selection--;
+								if(settings_menu.selection < 0) settings_menu.selection = MENU_ITEM_COUNT - 1;
+								settings_menu.need_redraw = 1;
+								break;
+							}
+							else if(key == SDLK_DOWN)
+							{
+								settings_menu.selection++;
+								if(settings_menu.selection >= MENU_ITEM_COUNT) settings_menu.selection = 0;
+								settings_menu.need_redraw = 1;
+								break;
+							}
+							else if(key == SDLK_LEFT)
+							{
+								settings_menu_adjust(settings_menu.selection, -1);
+								break;
+							}
+							else if(key == SDLK_RIGHT)
+							{
+								settings_menu_adjust(settings_menu.selection, 1);
+								break;
+							}
+							else if(key == SDLK_RETURN)  // Enter to confirm
+							{
+								if(settings_menu.selection == MENU_ITEM_EXIT)
+								{
+									settings_menu_adjust(MENU_ITEM_EXIT, 0);
+								}
+								break;
+							}
+							else if(key == SDLK_ESCAPE)  // Escape to close menu
+							{
+								settings_menu.visible = 0;
+								settings_menu.need_redraw = 1;
+								break;
+							}
+						}
 						sendKey(key, e.key.state == SDL_PRESSED);
 					}
 					break;
@@ -924,17 +1624,17 @@ void *startCapturing(void *args)
 						{
 							if (!left_trigger_active && value > TRIGGER_PRESS_THRESHOLD) {
 								left_trigger_active = true;
-								printf("Left Trigger PRESSED (value=%d)\n", value);
-								// 在这里执行“按下”逻辑
-								sendKey(joy2emu(SDL_AXIS_TRIGGERLEFT),true);
-							}
-							else if (left_trigger_active && value < TRIGGER_RELEASE_THRESHOLD) {
+								if (settings_menu.visible && settings_menu.keymap_mode == KEYMAP_MODE_WAITING) {
+									set_keymap_with_swap(settings_menu.keymap_selection, "L2");
+									settings_menu.keymap_mode = KEYMAP_MODE_SELECT;
+									settings_menu.need_redraw = 1;
+								} else if (!settings_menu.visible) {
+									sendKey(joy2emu(SDL_AXIS_TRIGGERLEFT), true);
+								}
+							} else if (left_trigger_active && value < TRIGGER_RELEASE_THRESHOLD) {
 								left_trigger_active = false;
-								printf("Left Trigger RELEASED (value=%d)\n", value);
-								// 在这里执行“释放”逻辑
-								sendKey(joy2emu(SDL_AXIS_TRIGGERLEFT),false);
+								if (!settings_menu.visible) sendKey(joy2emu(SDL_AXIS_TRIGGERLEFT), false);
 							}
-						
 							axis_name = "Left Trigger";
 							break;
 						}
@@ -942,15 +1642,17 @@ void *startCapturing(void *args)
 						{
 							if (!right_trigger_active && value > TRIGGER_PRESS_THRESHOLD) {
 								right_trigger_active = true;
-								printf("Right Trigger PRESSED (value=%d)\n", value);
-								sendKey(joy2emu(SDL_AXIS_TRIGGERRIGHT),true);
-							}
-							else if (right_trigger_active && value < TRIGGER_RELEASE_THRESHOLD) {
+								if (settings_menu.visible && settings_menu.keymap_mode == KEYMAP_MODE_WAITING) {
+									set_keymap_with_swap(settings_menu.keymap_selection, "R2");
+									settings_menu.keymap_mode = KEYMAP_MODE_SELECT;
+									settings_menu.need_redraw = 1;
+								} else if (!settings_menu.visible) {
+									sendKey(joy2emu(SDL_AXIS_TRIGGERRIGHT), true);
+								}
+							} else if (right_trigger_active && value < TRIGGER_RELEASE_THRESHOLD) {
 								right_trigger_active = false;
-								printf("Right Trigger RELEASED (value=%d)\n", value);
-								sendKey(joy2emu(SDL_AXIS_TRIGGERRIGHT),false);
+								if (!settings_menu.visible) sendKey(joy2emu(SDL_AXIS_TRIGGERRIGHT), false);
 							}
-						
 							axis_name = "Right Trigger";
 							break;
 						}
@@ -1000,13 +1702,12 @@ void *startCapturing(void *args)
 						case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER://R1
 							button_name="SDL_CONTROLLER_BUTTON_RIGHTSHOULDER";
 							break;
-						case SDL_CONTROLLER_BUTTON_LEFTSTICK://左摇杆按下把方向键切换为2,4,6,8
+						case SDL_CONTROLLER_BUTTON_LEFTSTICK://左摇杆按下发送OK键
 							button_name="SDL_CONTROLLER_BUTTON_LEFTSTICK";
-							use_numpad=((e.cbutton.state == SDL_PRESSED) ? (1-use_numpad) : use_numpad) ;
+							sendKey(SDLK_RETURN, e.cbutton.state == SDL_PRESSED);
 							break;
-						case SDL_CONTROLLER_BUTTON_RIGHTSTICK://右摇杆作为ok键(SDLK_o)
+						case SDL_CONTROLLER_BUTTON_RIGHTSTICK://右摇杆 - 不做任何操作
 							button_name="SDL_CONTROLLER_BUTTON_RIGHTSTICK";
-							sendKey(SDLK_o, e.cbutton.state == SDL_PRESSED);
 							break;
 						case SDL_CONTROLLER_BUTTON_DPAD_UP:
 						case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
@@ -1020,15 +1721,11 @@ void *startCapturing(void *args)
 								sendKey_Direct(e.cbutton.button, e.cbutton.state == SDL_PRESSED);
 							}
 							break;
-						case SDL_CONTROLLER_BUTTON_GUIDE: //menu键退出
+						case SDL_CONTROLLER_BUTTON_GUIDE: //GUIDE键 - 可用于映射
 							button_name="SDL_CONTROLLER_BUTTON_GUIDE";
-							capturing = false;
-							sendKey(-1, e.cbutton.state == SDL_PRESSED);
 							break;
-						default://未识别的键也退出
+						default://未识别的键
 							button_name = "Unknown button_name";
-							capturing = false;
-							sendKey(-1, e.cbutton.state == SDL_PRESSED);
 							break;	
 						
 					}
@@ -1042,19 +1739,112 @@ void *startCapturing(void *args)
 					if(mod)
 					{
 						switch (e.cbutton.button) {
-							case SDL_CONTROLLER_BUTTON_X://切换鼠标模式
+							case SDL_CONTROLLER_BUTTON_X://打开/关闭设置菜单
 								mod=0;
-								use_mouse=1-use_mouse;//切换鼠标
+								settings_menu.visible = !settings_menu.visible;
+								settings_menu.need_redraw = 1;
 								key=0;
 								break;
-							case SDL_CONTROLLER_BUTTON_A://旋转
-								mod=0;
-								rotate=(1+rotate)%3;//连续旋转
-								key=0;
+						}
+					}
+
+					// Handle menu navigation when menu is visible
+					if(settings_menu.visible && e.cbutton.state == SDL_PRESSED)
+					{
+						// Key mapping mode: waiting for button press
+						if(settings_menu.keymap_mode == KEYMAP_MODE_WAITING)
+						{
+							// Save the button mapping (with swap)
+							const char *btn_name = get_button_name(e.cbutton.button);
+							if(btn_name && strcmp(btn_name, "Unknown") != 0) {
+								set_keymap_with_swap(settings_menu.keymap_selection, btn_name);
+							}
+							settings_menu.keymap_mode = KEYMAP_MODE_SELECT;
+							settings_menu.need_redraw = 1;
+							key = 0;
+							break;
+						}
+						
+						// Key mapping mode: selecting which key to map
+						if(settings_menu.keymap_mode == KEYMAP_MODE_SELECT)
+						{
+							switch(e.cbutton.button) {
+								case SDL_CONTROLLER_BUTTON_DPAD_UP:
+									settings_menu.keymap_selection--;
+									if(settings_menu.keymap_selection < 0) settings_menu.keymap_selection = KEYMAP_COUNT;  // +1 for reset
+									settings_menu.need_redraw = 1;
+									key = 0;
+									break;
+								case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+									settings_menu.keymap_selection++;
+									if(settings_menu.keymap_selection > KEYMAP_COUNT) settings_menu.keymap_selection = 0;
+									settings_menu.need_redraw = 1;
+									key = 0;
+									break;
+								case SDL_CONTROLLER_BUTTON_A:  // Select key to remap or reset
+									if(settings_menu.keymap_selection == KEYMAP_COUNT) {
+										// 恢复默认
+										reset_keymap();
+										settings_menu.need_redraw = 1;
+									} else {
+										settings_menu.keymap_mode = KEYMAP_MODE_WAITING;
+										snprintf(settings_menu.keymap_waiting_text, sizeof(settings_menu.keymap_waiting_text), 
+											"Press button for %s", keymap_names[settings_menu.keymap_selection]);
+										settings_menu.need_redraw = 1;
+									}
+									key = 0;
+									break;
+								case SDL_CONTROLLER_BUTTON_B:  // Back to main menu
+									settings_menu.keymap_mode = KEYMAP_MODE_NORMAL;
+									settings_menu.need_redraw = 1;
+									key = 0;
+									break;
+								default:
+									key = 0;
+									break;
+							}
+							break;
+						}
+						
+						// Normal menu mode
+						switch(e.cbutton.button) {
+							case SDL_CONTROLLER_BUTTON_DPAD_UP:
+								settings_menu.selection--;
+								if(settings_menu.selection < 0) settings_menu.selection = MENU_ITEM_COUNT - 1;
+								settings_menu.need_redraw = 1;
+								key = 0;
 								break;
-							case SDL_CONTROLLER_BUTTON_START://切换按键输入模式
-								mod=0;
-								key=SDLK_c;//英文c,发送到java,作为切换按键模式的信号
+							case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+								settings_menu.selection++;
+								if(settings_menu.selection >= MENU_ITEM_COUNT) settings_menu.selection = 0;
+								settings_menu.need_redraw = 1;
+								key = 0;
+								break;
+							case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+								settings_menu_adjust(settings_menu.selection, -1);
+								key = 0;
+								break;
+							case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+								settings_menu_adjust(settings_menu.selection, 1);
+								key = 0;
+								break;
+							case SDL_CONTROLLER_BUTTON_A:  // Confirm selection
+								if(settings_menu.selection == MENU_ITEM_EXIT)
+								{
+									settings_menu_adjust(MENU_ITEM_EXIT, 0);
+								}
+								else if(settings_menu.selection == MENU_ITEM_KEYMAP)
+								{
+									settings_menu_adjust(MENU_ITEM_KEYMAP, 0);
+								}
+								key = 0;
+								break;
+							case SDL_CONTROLLER_BUTTON_B:  // Close menu
+								settings_menu.visible = 0;
+								settings_menu.need_redraw = 1;
+								key = 0;
+								break;
+							default:
 								break;
 						}
 					}
@@ -1155,7 +1945,7 @@ void defaultKeymap()
 }
 
 int loadConfig() {
-    // 打开文件
+    // 只读取同级目录
     FILE *file = fopen("keymap.cfg", "r");
     if (file == NULL) {
 		std::cout  << "打开文件失败" << std::endl;
