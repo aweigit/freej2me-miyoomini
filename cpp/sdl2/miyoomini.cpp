@@ -101,7 +101,7 @@ unsigned char joymouseImage[374] =
 
 void sendKey(int key, bool pressed)
 {
-	//std::cerr<<"key name:"<<SDL_GetKeyName(key)<<" key num:"<<key<<" pressed:"<<pressed <<std::endl;
+	//std::cout<<"key name:"<<SDL_GetKeyName(key)<<" key num:"<<key<<" pressed:"<<pressed <<std::endl;
 	
 	Uint8 bytes [5];
 	bytes[0] = (Uint8) ((use_mouse << 4 & 0xF0) | pressed);
@@ -122,7 +122,7 @@ void sendKey(int key, bool pressed)
 	}
 	
 	
-	fwrite(&bytes, sizeof(Uint8), 5, stdout);
+	fwrite(&bytes, sizeof(Uint8), 5, stderr);
 }
 
 bool sendQuitEvent()
@@ -181,7 +181,7 @@ void rot2(unsigned char* src,unsigned char*dest,int w,int h)
 	}
 }
 
-void drawFrame(unsigned char *frame, SDL_Texture *mTexture,size_t pitch, SDL_Rect *dest, int interFrame = 16)
+void drawFrame(unsigned char *frame, SDL_Texture *mTexture,size_t pitch, SDL_Rect *dest)
 {
 	// Cutoff rendering at 60fps，毫秒
 	//if (SDL_GetTicks() - last_time < interFrame) {
@@ -206,20 +206,20 @@ void init()
 {
 	if (source_width == 0 || source_height == 0)
 	{
-		std::cerr << "anbu: Neither width nor height parameters can be 0." << std::endl;
+		std::cout << "anbu: Neither width nor height parameters can be 0." << std::endl;
 		exit(1);
 	}
 
 	if(SDL_Init(SDL_INIT_VIDEO) < 0) 
 	{
-		std::cerr << "Unable to initialize SDL" << std::endl;
-		std::cerr <<"SDL无法初始化! SDL_Error: "<<SDL_GetError()<<std::endl;
+		std::cout << "Unable to initialize SDL" << std::endl;
+		std::cout <<"SDL无法初始化! SDL_Error: "<<SDL_GetError()<<std::endl;
 		exit(1);
 	}
 
 	loadDisplayDimentions();
 
-	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
 	
 
 	int window_flag =  SDL_WINDOW_SHOWN;
@@ -232,12 +232,12 @@ void init()
 	}
 	catch(std::exception& e)
 	{
-		std::cerr << "SDL_CreateWindow err:"<<e.what() << std::endl;
+		std::cout << "SDL_CreateWindow err:"<<e.what() << std::endl;
 		exit(-1);
 	}
 	
 	if(mWindow == NULL) {
-        std::cerr<<"Could not create window: "<<SDL_GetError()<<std::endl;
+        std::cout<<"Could not create window: "<<SDL_GetError()<<std::endl;
         exit(-1);
     }
 	
@@ -260,7 +260,7 @@ void loadBackground()
 	SDL_Surface *bmp = NULL;
 	bmp = SDL_LoadBMP("bg.bmp");
     if (bmp == NULL) {
-        std::cerr<<"SDL_LoadBMP failed: "<<SDL_GetError()<<std::endl;
+        std::cout<<"SDL_LoadBMP failed: "<<SDL_GetError()<<std::endl;
     }
 	
 
@@ -277,11 +277,11 @@ void startStreaming()
 	dest= getDestinationRect(source_width,source_height);
 	pitch= source_width * sizeof(char) * BYTES;
 	//纹理大小是jar游戏大小
-	mTexture = SDL_CreateTexture(mRenderer, SDL_PIXELFORMAT_BGR565, SDL_TEXTUREACCESS_STREAMING, source_width, source_height);
+	mTexture = SDL_CreateTexture(mRenderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, source_width, source_height);
 	
 	rodest= getDestinationRect(source_height,source_width);
 	ropitch= source_height * sizeof(char) * BYTES;
-	romTexture = SDL_CreateTexture(mRenderer, SDL_PIXELFORMAT_BGR565, SDL_TEXTUREACCESS_STREAMING,  source_height,source_width);
+	romTexture = SDL_CreateTexture(mRenderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING,  source_height,source_width);
 
 	//loadBackground();
 	
@@ -369,7 +369,7 @@ void *startCapturing(void *args)
 			{
 				case SDL_QUIT:
 					sendKey(-1, true);
-					fflush(stdout);
+					fflush(stderr);
 					capturing = false;
 					pthread_exit(NULL);
 					break;
@@ -390,13 +390,13 @@ void *startCapturing(void *args)
 					
 					if (key == SDLK_ESCAPE) {
 						sendKey(key, event.key.state == SDL_PRESSED);
-						fflush(stdout);
+						fflush(stderr);
 						capturing = false;
 						pthread_exit(NULL);
 					}
 					else if (key == SDLK_HOME) {
 						sendKey(key, event.key.state == SDL_PRESSED);
-						fflush(stdout);
+						fflush(stderr);
 						capturing = false;
 						pthread_exit(NULL);
 					}
@@ -433,7 +433,7 @@ void *startCapturing(void *args)
 						if(use_mouse)
 						{
 							sendKey(key, event.key.state == SDL_PRESSED);
-							fflush(stdout);
+							fflush(stderr);
 							continue;
 						}
 						
@@ -616,7 +616,7 @@ void *startCapturing(void *args)
 					break;
 
 			}
-			fflush(stdout);
+			fflush(stderr);
 		}
 	}
 	pthread_exit(NULL);
@@ -687,7 +687,7 @@ int loadConfig() {
     // 打开文件
     FILE *file = fopen("keymap.cfg", "r");
     if (file == NULL) {
-		std::cerr  << "打开文件失败" << std::endl;
+		std::cout  << "打开文件失败" << std::endl;
         return -1;
     }
  
@@ -707,7 +707,7 @@ int loadConfig() {
     if (json == NULL) {
         const char *error_ptr = cJSON_GetErrorPtr();
         if (error_ptr != NULL) {
-            fprintf(stderr, "解析json错误：%s\n", error_ptr);
+            fprintf(stdout, "解析json错误：%s\n", error_ptr);
         }
         cJSON_Delete(json);
         free(data);
@@ -752,7 +752,7 @@ int loadConfig() {
 		
 		defaultKeymap();
 		
-		std::cerr << "解析json出错:"<<e.what() << std::endl;
+		std::cout << "解析json出错:"<<e.what() << std::endl;
 		return -1;
 	}
  
@@ -768,7 +768,7 @@ int loadConfig() {
 int main(int argc, char* argv[])
 {	
 	if ( argc != 3 ) {
-		std::cerr << "参数错误" << std::endl;
+		std::cout << "参数错误" << std::endl;
 		return 0;
 	}
 	source_width = atoi(argv[1]);
@@ -779,7 +779,7 @@ int main(int argc, char* argv[])
 	
 	if (pthread_create(&t_capturing, 0, &startCapturing, NULL))
 	{
-		std::cerr << "Unable to start thread, exiting ..." << std::endl;
+		std::cout << "Unable to start thread, exiting ..." << std::endl;
 		SDL_Quit();
 		return 1;
 	}
